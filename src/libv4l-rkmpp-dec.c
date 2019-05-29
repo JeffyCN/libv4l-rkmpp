@@ -103,6 +103,7 @@ static void rkmpp_put_packets(struct rkmpp_dec_context *dec)
 
 		TAILQ_REMOVE(&ctx->output.pending_buffers,
 			     rkmpp_buffer, entry);
+		rkmpp_buffer_clr_pending(rkmpp_buffer);
 
 		/* Hold eos packet until eos frame received(flushed) */
 		if (is_eos) {
@@ -123,6 +124,7 @@ static void rkmpp_put_packets(struct rkmpp_dec_context *dec)
 
 		TAILQ_INSERT_TAIL(&ctx->output.avail_buffers,
 				  rkmpp_buffer, entry);
+		rkmpp_buffer_set_available(rkmpp_buffer);
 	}
 	pthread_mutex_unlock(&ctx->output.queue_mutex);
 
@@ -143,10 +145,13 @@ static void rkmpp_put_frames(struct rkmpp_dec_context *dec)
 			TAILQ_FIRST(&ctx->capture.pending_buffers);
 		TAILQ_REMOVE(&ctx->capture.pending_buffers,
 			     rkmpp_buffer, entry);
+		rkmpp_buffer_clr_pending(rkmpp_buffer);
+
 		LOGV(3, "put frame: %d fd: %d\n", rkmpp_buffer->index,
 		     rkmpp_buffer->fd);
+
 		mpp_buffer_put(rkmpp_buffer->rkmpp_buf);
-		rkmpp_buffer->locked = false;
+		rkmpp_buffer_clr_locked(rkmpp_buffer);
 	}
 	pthread_mutex_unlock(&ctx->capture.queue_mutex);
 
@@ -263,6 +268,7 @@ static void *decoder_thread_fn(void *data)
 
 				TAILQ_INSERT_TAIL(&ctx->output.avail_buffers,
 						  dec->eos_packet, entry);
+				rkmpp_buffer_set_available(dec->eos_packet);
 				dec->eos_packet = NULL;
 			}
 
@@ -284,18 +290,17 @@ static void *decoder_thread_fn(void *data)
 		rkmpp_buffer = &ctx->capture.buffers[index];
 
 		rkmpp_buffer->timestamp = mpp_frame_get_pts(frame);
-		rkmpp_buffer->locked = true;
+		rkmpp_buffer_set_locked(rkmpp_buffer);
 
 		if (mpp_frame_get_errinfo(frame) ||
 		    mpp_frame_get_discard(frame)) {
 			LOGE("frame err or discard\n");
 			rkmpp_buffer->bytesused = 0;
-			rkmpp_buffer->error = true;
+			rkmpp_buffer_set_error(rkmpp_buffer);
 		} else {
 			/* Size of NV12 image */
 			rkmpp_buffer->bytesused = dec->video_info.hor_stride *
 				dec->video_info.ver_stride * 3 / 2;
-			rkmpp_buffer->error = false;
 		}
 
 		LOGV(3, "return frame(%" PRIu64 "): %d\n",
@@ -304,6 +309,7 @@ static void *decoder_thread_fn(void *data)
 		pthread_mutex_lock(&ctx->capture.queue_mutex);
 		TAILQ_INSERT_TAIL(&ctx->capture.avail_buffers,
 				  rkmpp_buffer, entry);
+		rkmpp_buffer_set_available(rkmpp_buffer);
 		pthread_mutex_unlock(&ctx->capture.queue_mutex);
 next_locked:
 		pthread_mutex_unlock(&ctx->ioctl_mutex);
@@ -475,6 +481,7 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 			       enum v4l2_buf_type *type)
 {
 	struct rkmpp_context *ctx = dec->ctx;
+	struct rkmpp_buffer *rkmpp_buffer;
 	struct rkmpp_buf_queue *queue;
 	int i;
 
@@ -499,13 +506,26 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 	/* Update poll event after avail list changed */
 	rkmpp_update_poll_event(ctx);
 
-	/* Lock all buffers */
+	/* Reset buffer states*/
 	for (i = 0; i < queue->num_buffers; i++) {
-		if (queue->buffers[i].locked)
-			continue;
+		rkmpp_buffer = &queue->buffers[i];
 
-		mpp_buffer_inc_ref(queue->buffers[i].rkmpp_buf);
-		queue->buffers[i].locked = true;
+		if (rkmpp_buffer_error(rkmpp_buffer))
+			rkmpp_buffer_clr_error(rkmpp_buffer);
+
+		if (!rkmpp_buffer_locked(rkmpp_buffer)) {
+			mpp_buffer_inc_ref(rkmpp_buffer->rkmpp_buf);
+			rkmpp_buffer_set_locked(rkmpp_buffer);
+		}
+
+		if (rkmpp_buffer_queued(rkmpp_buffer))
+			rkmpp_buffer_clr_queued(rkmpp_buffer);
+
+		if (rkmpp_buffer_pending(rkmpp_buffer))
+			rkmpp_buffer_clr_pending(rkmpp_buffer);
+
+		if (rkmpp_buffer_available(rkmpp_buffer))
+			rkmpp_buffer_clr_available(rkmpp_buffer);
 	}
 
 	/* Clear eos packet */

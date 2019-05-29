@@ -55,7 +55,7 @@ static void rkmpp_destroy_buffers(struct rkmpp_context *ctx,
 
 	if (queue->buffers) {
 		for (i = 0; i < queue->num_buffers; i++) {
-			if (queue->buffers[i].locked)
+			if (rkmpp_buffer_locked(&queue->buffers[i]))
 				mpp_buffer_put(queue->buffers[i].rkmpp_buf);
 		}
 
@@ -354,7 +354,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 		queue->buffers[i].rkmpp_buf = buffer;
 		queue->buffers[i].fd = mpp_buffer_get_fd(buffer);
 		queue->buffers[i].index = i;
-		queue->buffers[i].locked = true;
+		rkmpp_buffer_set_locked(&queue->buffers[i]);
 
 		LOGV(3, "create buffer(%d), fd: %d\n",
 		     i, queue->buffers[i].fd);
@@ -375,15 +375,13 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 			goto err;
 		}
 		mpp_buffer_put(buffer);
-		queue->buffers[i].locked = false;
 
-		/* Lock all buffers */
+		/* Lock all buffers again */
 		ret = mpp_buffer_get(queue->group, &buffer, sizeimage);
 		if (ret != MPP_OK) {
 			LOGE("unable to lock buffer\n");
 			goto err;
 		}
-		queue->buffers[i].locked = true;
 
 		queue->buffers[i].rkmpp_buf = buffer;
 		queue->buffers[i].fd = mpp_buffer_get_fd(buffer);
@@ -434,6 +432,18 @@ int rkmpp_querybuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 		buffer->m.planes[0].m.userptr = rkmpp_buffer->userptr;
 
         buffer->flags = 0;
+	if (rkmpp_buffer_error(rkmpp_buffer))
+		buffer->flags |= V4L2_BUF_FLAG_ERROR;
+	if (rkmpp_buffer_mapped(rkmpp_buffer))
+		buffer->flags |= V4L2_BUF_FLAG_MAPPED;
+	if (rkmpp_buffer_queued(rkmpp_buffer)) {
+		buffer->flags |= V4L2_BUF_FLAG_QUEUED;
+		if (rkmpp_buffer_available(rkmpp_buffer))
+			buffer->flags |= V4L2_BUF_FLAG_DONE;
+		else
+			buffer->flags |= V4L2_BUF_FLAG_PREPARED;
+	}
+
         buffer->field = V4L2_FIELD_NONE;
         memset(&buffer->timecode, 0, sizeof(buffer->timecode));
         buffer->sequence = 0;
@@ -476,6 +486,8 @@ int rkmpp_expbuf(struct rkmpp_context *ctx, struct v4l2_exportbuffer *expbuf)
 	LOGV(1, "export buf(%d), type: %d, fd: %d(%d)\n",
 	     expbuf->index, expbuf->type, expbuf->fd, rkmpp_buffer->fd);
 
+	rkmpp_buffer_set_exported(rkmpp_buffer);
+
 	LEAVE();
 	return 0;
 }
@@ -516,9 +528,12 @@ int rkmpp_qbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 	     rkmpp_buffer->bytesused, buffer->type,
 	     rkmpp_buffer->fd);
 
+	rkmpp_buffer_set_queued(rkmpp_buffer);
+
 	pthread_mutex_lock(&queue->queue_mutex);
 	TAILQ_INSERT_TAIL(&queue->pending_buffers,
 			  rkmpp_buffer, entry);
+	rkmpp_buffer_set_pending(rkmpp_buffer);
 	pthread_mutex_unlock(&queue->queue_mutex);
 
 	LEAVE();
@@ -550,6 +565,7 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 	pthread_mutex_lock(&queue->queue_mutex);
 	rkmpp_buffer = TAILQ_FIRST(&queue->avail_buffers);
 	TAILQ_REMOVE(&queue->avail_buffers, rkmpp_buffer, entry);
+	rkmpp_buffer_clr_available(rkmpp_buffer);
 	pthread_mutex_unlock(&queue->queue_mutex);
 
 	/* Update poll event after avail list changed */
@@ -561,8 +577,10 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 	buffer->timestamp.tv_usec = rkmpp_buffer->timestamp % 1000000;
 
 	buffer->flags = V4L2_BUF_FLAG_DONE;
-	if (rkmpp_buffer->error)
+	if (rkmpp_buffer_error(rkmpp_buffer)) {
 		buffer->flags |= V4L2_BUF_FLAG_ERROR;
+		rkmpp_buffer_clr_error(rkmpp_buffer);
+	}
 
 	if (buffer->memory == V4L2_MEMORY_USERPTR) {
 		rkmpp_buffer->userptr = buffer->m.planes[0].m.userptr;
@@ -573,6 +591,8 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 	}
 
 	buffer->index = rkmpp_buffer->index;
+
+	rkmpp_buffer_clr_queued(rkmpp_buffer);
 
 	LOGV(3, "dequeue buffer: %d(%ld), size: %d, type: %d\n",
 	     buffer->index, buffer->timestamp.tv_sec,
@@ -772,6 +792,8 @@ static void *plugin_mmap(void *dev_ops_priv, void *start,
 	ptr = mpp_buffer_get_ptr(queue->buffers[index].rkmpp_buf);
 
 	LOGV(1, "mmap buffer(%d): %p, fd: %d\n", index, ptr, queue->buffers[index].fd);
+
+	rkmpp_buffer_set_mapped(&queue->buffers[index]);
 
 	LEAVE();
 	return ptr;

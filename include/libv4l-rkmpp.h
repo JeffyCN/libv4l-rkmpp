@@ -107,6 +107,26 @@ struct rkmpp_fmt {
 };
 
 /**
+ * enum rkmpp_buffer_flag - Flags of rkmpp buffer
+ * @ERROR:		Something wrong in the buffer.
+ * @LOCKED:		Buffer been locked from mpp buffer group.
+ * @MAPPED:		Buffer been mapped to userspace(cannot trace unmap now).
+ * @EXPORTED:		Buffer been exported to userspace.
+ * @QUEUED:		Buffer been queued.
+ * @PENDING:		Buffer is in pending queue.
+ * @AVAILABLE:		Buffer is in available queue.
+ */
+enum rkmpp_buffer_flag {
+	RKMPP_BUFFER_ERROR	= 1 << 0,
+	RKMPP_BUFFER_LOCKED	= 1 << 1,
+	RKMPP_BUFFER_MAPPED	= 1 << 2,
+	RKMPP_BUFFER_EXPORTED	= 1 << 3,
+	RKMPP_BUFFER_QUEUED	= 1 << 4,
+	RKMPP_BUFFER_PENDING	= 1 << 5,
+	RKMPP_BUFFER_AVAILABLE	= 1 << 6,
+};
+
+/**
  * struct rkmpp_buffer - Information about mpp buffer
  * @entry:		Queue entry.
  * @rkmpp_buf:		Handle of mpp buffer.
@@ -115,8 +135,7 @@ struct rkmpp_fmt {
  * @userptr:		Buffer's userspace ptr.
  * @timestamp:		Buffer's timestamp.
  * @bytesused:		Number of bytes occupied by data in the buffer.
- * @error:		Something wrong in the buffer.
- * @locked:		Buffer been locked from mpp buffer group.
+ * @flags:		Buffer's flags.
  */
 struct rkmpp_buffer {
 	TAILQ_ENTRY(rkmpp_buffer) entry;
@@ -128,9 +147,7 @@ struct rkmpp_buffer {
 	unsigned long userptr;
 	uint64_t timestamp;
 	uint32_t bytesused;
-
-	bool error;
-	bool locked;
+	uint32_t flags;
 };
 
 TAILQ_HEAD(rkmpp_buf_head, rkmpp_buffer);
@@ -312,6 +329,41 @@ const char* rkmpp_cmd2str(unsigned long cmd)
 		return "UNKNOWN";
 	}
 }
+
+#define RKMPP_BUFFER_FLAG_HELPER_GET(flag, name) \
+static inline bool rkmpp_buffer_## name(struct rkmpp_buffer *buffer) \
+{ \
+	return !!(buffer->flags & flag); \
+}
+
+#define RKMPP_BUFFER_FLAG_HELPER_SET(flag, name) \
+static inline void rkmpp_buffer_set_ ## name(struct rkmpp_buffer *buffer) \
+{ \
+	if (rkmpp_buffer_ ## name(buffer)) \
+		LOGE("buffer(%d) is already " #name "\n", buffer->index); \
+	buffer->flags |= flag; \
+}
+
+#define RKMPP_BUFFER_FLAG_HELPER_CLR(flag, name) \
+static inline void rkmpp_buffer_clr_ ## name(struct rkmpp_buffer *buffer) \
+{ \
+	if (!rkmpp_buffer_ ## name(buffer)) \
+		LOGE("buffer(%d) is not " #name "\n", buffer->index); \
+	buffer->flags &= ~flag; \
+}
+
+#define RKMPP_BUFFER_FLAG_HELPERS(flag, name) \
+	RKMPP_BUFFER_FLAG_HELPER_GET(flag, name) \
+	RKMPP_BUFFER_FLAG_HELPER_SET(flag, name) \
+	RKMPP_BUFFER_FLAG_HELPER_CLR(flag, name)
+
+RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_ERROR, error)
+RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_LOCKED, locked)
+RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_MAPPED, mapped)
+RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_EXPORTED, exported)
+RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_QUEUED, queued)
+RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_PENDING, pending)
+RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_AVAILABLE, available)
 
 int rkmpp_update_poll_event(struct rkmpp_context *ctx);
 int rkmpp_querycap(struct rkmpp_context *ctx, struct v4l2_capability *cap);
