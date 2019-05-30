@@ -223,6 +223,8 @@ static void *decoder_thread_fn(void *data)
 
 	ENTER();
 
+	LOGV(1, "ctx(%p): starting decoder thread\n", ctx);
+
 	while (1) {
 		pthread_mutex_lock(&dec->decoder_mutex);
 
@@ -330,6 +332,7 @@ next:
 static int rkmpp_dec_g_fmt(struct rkmpp_dec_context *dec,
 			   struct v4l2_format *f)
 {
+	struct rkmpp_context *ctx = dec->ctx;
 	int ret;
 
 	ENTER();
@@ -353,6 +356,8 @@ static int rkmpp_dec_subscribe_event(struct rkmpp_dec_context *dec,
 				     struct v4l2_event_subscription *sub,
 				     bool subscribe)
 {
+	struct rkmpp_context *ctx = dec->ctx;
+
 	ENTER();
 
 	if (sub->type != V4L2_EVENT_SOURCE_CHANGE) {
@@ -369,6 +374,8 @@ static int rkmpp_dec_subscribe_event(struct rkmpp_dec_context *dec,
 static int rkmpp_dec_dqevent(struct rkmpp_dec_context *dec,
 			     struct v4l2_event *event)
 {
+	struct rkmpp_context *ctx = dec->ctx;
+
 	ENTER();
 
 	if (!dec->event_subscribed || !dec->video_info.event) {
@@ -554,6 +561,8 @@ out:
 static int rkmpp_dec_g_selection(struct rkmpp_dec_context *dec,
 				 struct v4l2_selection *selection)
 {
+	struct rkmpp_context *ctx = dec->ctx;
+
 	ENTER();
 
 	if (selection->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||

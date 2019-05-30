@@ -60,8 +60,8 @@ extern int rkmpp_log_level;
 #define RETURN_ERR(err, ret) \
 	({ errno = err; LOGV(2, "errno: %d\n", errno); return ret; })
 
-#define ENTER()			LOGV(5, "ENTER\n")
-#define LEAVE()			LOGV(5, "LEAVE\n")
+#define ENTER()			LOGV(5, "ctx(%p): ENTER\n", ctx)
+#define LEAVE()			LOGV(5, "ctx(%p): LEAVE\n", ctx)
 
 /* From kernel's linux/kernel.h */
 #define ARRAY_SIZE(arr)		(sizeof(arr) / sizeof((arr)[0]))

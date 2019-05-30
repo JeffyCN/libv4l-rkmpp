@@ -628,7 +628,7 @@ int rkmpp_update_poll_event(struct rkmpp_context *ctx)
 
 static void *plugin_init(int fd)
 {
-	struct rkmpp_context *ctx;
+	struct rkmpp_context *ctx = NULL;
 	struct epoll_event ev;
 	int epollfd;
 	MPP_RET ret;
@@ -693,6 +693,8 @@ static void *plugin_init(int fd)
 	if (!ctx->data)
 		goto err_put_group;
 
+	LOGV(1, "ctx(%p): plugin inited\n", ctx);
+
 	LEAVE();
 	return ctx;
 err_put_group:
@@ -711,6 +713,8 @@ static void plugin_close(void *dev_ops_priv)
 	struct rkmpp_context *ctx = dev_ops_priv;
 
 	ENTER();
+
+	LOGV(1, "ctx(%p): closing plugin\n", ctx);
 
 //	if (ctx->is_decoder)
 		rkmpp_dec_deinit(ctx->data);
@@ -743,12 +747,12 @@ static int plugin_ioctl(void *dev_ops_priv, int fd,
 
 	pthread_mutex_lock(&ctx->ioctl_mutex);
 
-	LOGV(4, "%s\n", rkmpp_cmd2str(cmd));
+	LOGV(4, "ctx(%p): %s\n", ctx, rkmpp_cmd2str(cmd));
 
 //	if (ctx->is_decoder)
 		ret = rkmpp_dec_ioctl(ctx->data, cmd, arg);
 
-	LOGV(4, "%s ret: %d\n", rkmpp_cmd2str(cmd), ret);
+	LOGV(4, "ctx(%p): %s  ret: %d\n", ctx, rkmpp_cmd2str(cmd), ret);
 
 	pthread_mutex_unlock(&ctx->ioctl_mutex);
 
