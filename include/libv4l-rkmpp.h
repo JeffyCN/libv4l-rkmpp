@@ -49,6 +49,7 @@ extern int rkmpp_log_level;
 	printf("[%03ld.%03ld] [RKMPP] [%ld] %s(%d): " fmt, \
 	       tv.tv_sec % 1000, tv.tv_usec / 1000, gettid(), \
 	       __func__, __LINE__, ##__VA_ARGS__); \
+	fflush(stdout); \
 	})
 
 #define LOGV(level, fmt, ...) \
