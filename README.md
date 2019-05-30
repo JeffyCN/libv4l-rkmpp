@@ -57,7 +57,7 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 
    For chromium, use these command line flags to change the log level: [--enable-logging --v=1](https://www.chromium.org/for-testers/enable-logging)  
 
-   For libv4l-rkmpp, set the "LIBV4L_RKMPP_LOG_LEVEL" environment variable to change the log level.  
+   For libv4l-rkmpp, set the "LIBV4L_RKMPP_LOG_LEVEL" environment variable to change the log level. And set "LIBV4L_RKMPP_LOG_FPS" to enable logging fps.  
 
    For mpp, set the environment variable "mpp_debug", "rkv_h264d_debug", "mpp_dec_debug", "mpi_debug", etc. to change the modules' log levels.  
 

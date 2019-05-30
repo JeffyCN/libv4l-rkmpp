@@ -198,6 +198,8 @@ struct rkmpp_buf_queue {
  * @output:		Output queue.
  * @capture:		Capture queue.
  * @ioctl_mutex:	Mutex.
+ * @frames:		Number of frames reported.
+ * @last_fps_time:	The last time to count fps.
  * @data:		Private data.
  */
 struct rkmpp_context {
@@ -216,6 +218,9 @@ struct rkmpp_context {
 	struct rkmpp_buf_queue capture;
 
 	pthread_mutex_t ioctl_mutex;
+
+	uint64_t frames;
+	uint64_t last_fps_time;
 
 	void *data;
 };
@@ -366,6 +371,7 @@ RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_QUEUED, queued)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_PENDING, pending)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_AVAILABLE, available)
 
+void rkmpp_new_frame(struct rkmpp_context *ctx);
 int rkmpp_update_poll_event(struct rkmpp_context *ctx);
 int rkmpp_querycap(struct rkmpp_context *ctx, struct v4l2_capability *cap);
 int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f);

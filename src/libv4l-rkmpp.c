@@ -27,10 +27,14 @@
 #define PLUGIN_PUBLIC
 #endif
 
+#define FPS_UPDATE_INTERVAL 120
+
 #ifdef DEBUG
 int rkmpp_log_level = 10;
+static bool rkmpp_log_fps = true;
 #else
 int rkmpp_log_level = 0;
+static bool rkmpp_log_fps = false;
 #endif
 
 static pthread_once_t g_rkmpp_global_init_once = PTHREAD_ONCE_INIT;
@@ -41,8 +45,38 @@ static void rkmpp_global_init()
 	if (env != NULL)
 		rkmpp_log_level = atoi(env);
 
-	LOGV(1, "libv4l-rkmpp version: %s log_level: %d\n",
-	     LIBV4L_RKMPP_VERSION, rkmpp_log_level);
+	env = getenv("LIBV4L_RKMPP_LOG_FPS");
+	if (env != NULL)
+		rkmpp_log_fps = !!atoi(env);
+
+	LOGV(1, "libv4l-rkmpp version: %s log_level: %d, log_fps: %d\n",
+	     LIBV4L_RKMPP_VERSION, rkmpp_log_level, rkmpp_log_fps);
+}
+
+void rkmpp_new_frame(struct rkmpp_context *ctx)
+{
+	struct timeval tv;
+	uint64_t curr_time;
+	float fps;
+
+	if (!rkmpp_log_fps)
+		return;
+
+	if (!ctx->last_fps_time) {
+		gettimeofday(&tv, NULL);
+		ctx->last_fps_time = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+	}
+
+	if (++ctx->frames % FPS_UPDATE_INTERVAL)
+		return;
+
+	gettimeofday(&tv, NULL);
+	curr_time = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+
+	fps = 1000.0f * FPS_UPDATE_INTERVAL / (curr_time - ctx->last_fps_time);
+	ctx->last_fps_time = curr_time;
+
+	LOG("FPS: %6.1f || Frames: %" PRIu64 "\n", fps, ctx->frames);
 }
 
 static void rkmpp_destroy_buffers(struct rkmpp_context *ctx,

@@ -308,6 +308,9 @@ static void *decoder_thread_fn(void *data)
 		LOGV(3, "return frame(%" PRIu64 "): %d\n",
 		     rkmpp_buffer->timestamp, index);
 
+		/* Report new frame to count fps */
+		rkmpp_new_frame(ctx);
+
 		pthread_mutex_lock(&ctx->capture.queue_mutex);
 		TAILQ_INSERT_TAIL(&ctx->capture.avail_buffers,
 				  rkmpp_buffer, entry);
