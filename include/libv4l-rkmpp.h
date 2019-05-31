@@ -37,7 +37,7 @@
 #define V4L2_PIX_FMT_VP9_FRAME v4l2_fourcc('V', 'P', '9', 'F')
 #endif
 
-#define LIBV4L_RKMPP_VERSION "1.0.0~20190528"
+#define LIBV4L_RKMPP_VERSION "1.1.0~20190601"
 
 extern int rkmpp_log_level;
 
