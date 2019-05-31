@@ -1,0 +1,23 @@
+Source: libv4l-rkmpp
+Priority: optional
+Maintainer: Jeffy Chen <jeffy.chen@rock-chips.com>
+Build-Depends: debhelper (>= 9),
+               dh-autoreconf,
+               autotools-dev,
+               libtool,
+               pkg-config,
+               libv4l-dev,
+               librockchip-mpp-dev
+Standards-Version: 3.9.8
+Section: libs
+Homepage: https://github.com/JeffyCN/libv4l-rkmpp
+#Vcs-Git: https://anonscm.debian.org/collab-maint/libv4l-rkmpp.git
+#Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/libv4l-rkmpp.git
+
+Package: libv4l-rkmpp
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: A rockchip-mpp V4L2 wrapper plugin for chromium V4L2 VDA
+  A V4L2 plugin that wraps rockchip-mpp for the chromium's V4L2 VDA.
+
+  The original idea comes from v4l-gst.
