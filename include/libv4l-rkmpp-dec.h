@@ -17,6 +17,10 @@
 
 #include "libv4l-rkmpp.h"
 
+#ifndef V4L2_PIX_FMT_VP9
+#define V4L2_PIX_FMT_VP9	v4l2_fourcc('V', 'P', '9', '0') /* VP9 */
+#endif
+
 /**
  * struct rkmpp_video_info - Video information
  * @valid:		Data is valid.
