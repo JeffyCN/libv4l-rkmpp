@@ -31,9 +31,11 @@ AC_CHECK_LIB([pthread], [pthread_create])
 PKG_PROG_PKG_CONFIG
 PKG_CHECK_MODULES(RKMPP, rockchip_mpp >= 1.3.8)
 PKG_CHECK_MODULES(LIBV4L2, libv4l2 >= 1.4.1)
+AC_CHECK_LIB([rga], [c_RkRgaInit])
 
 # Checks for header files.
 AC_CHECK_HEADERS([fcntl.h stdint.h stdlib.h string.h sys/time.h unistd.h])
+AC_CHECK_HEADERS([rga/RgaApi.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_CHECK_HEADER_STDBOOL

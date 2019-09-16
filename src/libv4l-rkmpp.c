@@ -20,6 +20,7 @@
 #include "libv4l-plugin.h"
 #include "libv4l-rkmpp.h"
 #include "libv4l-rkmpp-dec.h"
+#include "libv4l-rkmpp-enc.h"
 
 #if HAVE_VISIBILITY
 #define PLUGIN_PUBLIC __attribute__ ((__visibility__("default")))
@@ -141,17 +142,17 @@ int rkmpp_querycap(struct rkmpp_context *ctx, struct v4l2_capability *cap)
 int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 {
 	const struct rkmpp_fmt *fmt;
-	bool out;
+	bool compressed;
 	int i, j;
 
 	ENTER();
 
 	switch (f->type) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-		out = false;
+		compressed = !ctx->is_decoder;
 		break;
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-		out = true;
+		compressed = ctx->is_decoder;
 		break;
 	default:
 		LOGE("invalid buf type\n");
@@ -160,9 +161,9 @@ int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 
 	for (i = 0, j = 0; i < ctx->num_formats; ++i) {
 		fmt = &ctx->formats[i];
-		if (out && (fmt->type == MPP_VIDEO_CodingNone))
+		if (!compressed && (fmt->type != MPP_VIDEO_CodingNone))
 			continue;
-		else if (!out && (fmt->type != MPP_VIDEO_CodingNone))
+		else if (compressed && (fmt->type == MPP_VIDEO_CodingNone))
 			continue;
 
 		if (j == f->index) {
@@ -181,7 +182,8 @@ int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 		++j;
 	}
 
-	LOGE("format(%d) not found\n", f->index);
+	LOGE("%s format(%d) not found\n",
+	     compressed ? "compressed" : "raw", f->index);
 	RETURN_ERR(EINVAL, -1);
 }
 
@@ -212,48 +214,80 @@ int rkmpp_enum_framesizes(struct rkmpp_context *ctx,
 	return 0;
 }
 
+static void calculate_plane_sizes(const struct rkmpp_fmt *fmt,
+                                  struct v4l2_pix_format_mplane *pix_fmt_mp)
+{
+	unsigned int w = pix_fmt_mp->width;
+	unsigned int h = pix_fmt_mp->height;
+	int i;
+
+	for (i = 0; i < fmt->num_planes; ++i) {
+		pix_fmt_mp->plane_fmt[i].bytesperline = w * fmt->depth[i] / 8;
+		pix_fmt_mp->plane_fmt[i].sizeimage = h *
+			pix_fmt_mp->plane_fmt[i].bytesperline;
+		/*
+		 * All of multiplanar formats we support have chroma
+		 * planes subsampled by 2 vertically.
+		 */
+		if (i != 0)
+			pix_fmt_mp->plane_fmt[i].sizeimage /= 2;
+	}
+}
+
 int rkmpp_try_fmt(struct rkmpp_context *ctx, struct v4l2_format *f)
 {
 	const struct rkmpp_fmt *fmt;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
+	bool compressed;
 
 	ENTER();
 
 	switch (f->type) {
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+		compressed = !ctx->is_decoder;
+		break;
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-		fmt = rkmpp_find_fmt(ctx, pix_fmt_mp->pixelformat);
-		if (!fmt) {
-			LOGE("failed to find output format\n");
-			RETURN_ERR(EINVAL, -1);
-		}
+		compressed = ctx->is_decoder;
+		break;
+	default:
+		LOGE("invalid buf type\n");
+		RETURN_ERR(EINVAL, -1);
+	}
 
+	fmt = rkmpp_find_fmt(ctx, pix_fmt_mp->pixelformat);
+	if (!fmt) {
+		LOGE("failed to find %s format\n",
+		     compressed ? "compressed" : "raw");
+		RETURN_ERR(EINVAL, -1);
+	}
+
+	if (compressed) {
 		if (pix_fmt_mp->plane_fmt[0].sizeimage == 0) {
-			LOGE("sizeimage of output format must be given\n");
+			LOGE("sizeimage of compressed format must be given\n");
 			RETURN_ERR(EINVAL, -1);
 		}
 
 		pix_fmt_mp->num_planes = fmt->num_planes;
 		pix_fmt_mp->plane_fmt[0].bytesperline = 0;
-		break;
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-		if (pix_fmt_mp->pixelformat != V4L2_PIX_FMT_NV12) {
-			LOGE("rkmpp only support NV12 capture format\n");
-			RETURN_ERR(EINVAL, -1);
-		}
-
-		fmt = rkmpp_find_fmt(ctx, pix_fmt_mp->pixelformat);
-		if (!fmt) {
-			LOGE("failed to find capture format\n");
-			RETURN_ERR(EINVAL, -1);
-		}
+	} else {
+		struct rkmpp_buf_queue *queue =
+			ctx->is_decoder ? &ctx->output : &ctx->capture;
 
 		pix_fmt_mp->num_planes = fmt->num_planes;
-		pix_fmt_mp->width = 0;
-		pix_fmt_mp->height = 0;
-		break;
-	default:
-		LOGE("invalid buf type\n");
-		RETURN_ERR(EINVAL, -1);
+
+		/* Limit to hardware min/max. */
+		pix_fmt_mp->width = clamp(pix_fmt_mp->width,
+					  queue->rkmpp_format->frmsize.min_width,
+					  queue->rkmpp_format->frmsize.max_width);
+		pix_fmt_mp->height = clamp(pix_fmt_mp->height,
+					   queue->rkmpp_format->frmsize.min_height,
+					   queue->rkmpp_format->frmsize.max_height);
+		/* Round up to macroblocks. */
+		pix_fmt_mp->width = round_up(pix_fmt_mp->width, RKMPP_MB_DIM);
+		pix_fmt_mp->height = round_up(pix_fmt_mp->height, RKMPP_MB_DIM);
+
+		/* Fill in remaining fields. */
+		calculate_plane_sizes(fmt, pix_fmt_mp);
 	}
 
 	LEAVE();
@@ -328,12 +362,6 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 
 	ENTER();
 
-	if (reqbufs->memory != V4L2_MEMORY_MMAP &&
-	    reqbufs->memory != V4L2_MEMORY_USERPTR) {
-		LOGE("only support reqbufs for MMAP/USERPTR\n");
-		RETURN_ERR(EINVAL, -1);
-	}
-
 	queue = rkmpp_get_queue(ctx, reqbufs->type);
 	if (!queue)
 		RETURN_ERR(errno, -1);
@@ -351,14 +379,15 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 	if (queue->num_buffers)
 		rkmpp_destroy_buffers(ctx, queue);
 
-	assert(queue->format.num_planes == 1);
-	sizeimage = queue->format.plane_fmt[0].sizeimage;
+	for (i = 0, sizeimage = 0; i < queue->format.num_planes; i++)
+		sizeimage += queue->format.plane_fmt[i].sizeimage;
+
 	if (!sizeimage || !ctx->mem_group) {
 		LOGE("unable to create buffers\n");
 		goto err;
 	}
 
-	LOGV(4, "sizeimage: %d, count: %d\n", sizeimage, reqbufs->count);
+	LOGV(3, "sizeimage: %d, count: %d\n", sizeimage, reqbufs->count);
 
 	pthread_mutex_lock(&queue->queue_mutex);
 	TAILQ_INIT(&queue->avail_buffers);
@@ -387,7 +416,10 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 		mpp_buffer_set_index(buffer, i);
 		queue->buffers[i].rkmpp_buf = buffer;
 		queue->buffers[i].fd = mpp_buffer_get_fd(buffer);
+		queue->buffers[i].size = sizeimage;
 		queue->buffers[i].index = i;
+		queue->buffers[i].length = queue->format.num_planes;
+		queue->buffers[i].planes[0].length = sizeimage;
 		rkmpp_buffer_set_locked(&queue->buffers[i]);
 
 		LOGV(3, "create buffer(%d), fd: %d\n",
@@ -436,6 +468,7 @@ int rkmpp_querybuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 {
 	struct rkmpp_buf_queue *queue;
 	struct rkmpp_buffer *rkmpp_buffer;
+	int ret;
 
 	ENTER();
 
@@ -450,37 +483,11 @@ int rkmpp_querybuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 
 	rkmpp_buffer = &queue->buffers[buffer->index];
 
-	buffer->length = 1;
-	buffer->bytesused = 0;
-	buffer->timestamp.tv_sec = rkmpp_buffer->timestamp / 1000000;
-	buffer->timestamp.tv_usec = rkmpp_buffer->timestamp % 1000000;
-
-	buffer->m.planes[0].length =
-		mpp_buffer_get_size(rkmpp_buffer->rkmpp_buf);
-	buffer->m.planes[0].bytesused = rkmpp_buffer->bytesused;
-
-	if (buffer->memory == V4L2_MEMORY_MMAP)
-		buffer->m.planes[0].m.mem_offset =
-			RKMPP_MEM_OFFSET(buffer->type, buffer->index);
-	else if (buffer->memory == V4L2_MEMORY_USERPTR)
-		buffer->m.planes[0].m.userptr = rkmpp_buffer->userptr;
-
-        buffer->flags = 0;
-	if (rkmpp_buffer_error(rkmpp_buffer))
-		buffer->flags |= V4L2_BUF_FLAG_ERROR;
-	if (rkmpp_buffer_mapped(rkmpp_buffer))
-		buffer->flags |= V4L2_BUF_FLAG_MAPPED;
-	if (rkmpp_buffer_queued(rkmpp_buffer)) {
-		buffer->flags |= V4L2_BUF_FLAG_QUEUED;
-		if (rkmpp_buffer_available(rkmpp_buffer))
-			buffer->flags |= V4L2_BUF_FLAG_DONE;
-		else
-			buffer->flags |= V4L2_BUF_FLAG_PREPARED;
+	ret = rkmpp_to_v4l2_buffer(ctx, rkmpp_buffer, buffer);
+	if (ret < 0) {
+		LOGE("failed to convert buffer\n");
+		RETURN_ERR(EINVAL, -1);
 	}
-
-        buffer->field = V4L2_FIELD_NONE;
-        memset(&buffer->timecode, 0, sizeof(buffer->timecode));
-        buffer->sequence = 0;
 
 	LEAVE();
 	return 0;
@@ -530,6 +537,7 @@ int rkmpp_qbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 {
 	struct rkmpp_buf_queue *queue;
 	struct rkmpp_buffer *rkmpp_buffer;
+	int ret;
 
 	ENTER();
 
@@ -544,17 +552,10 @@ int rkmpp_qbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 
 	rkmpp_buffer = &queue->buffers[buffer->index];
 
-	assert(buffer->length == 1);
-	rkmpp_buffer->bytesused = buffer->m.planes[0].bytesused;
-	rkmpp_buffer->timestamp =
-		(uint64_t)buffer->timestamp.tv_sec * 1000000;
-
-	if (buffer->memory == V4L2_MEMORY_USERPTR) {
-		rkmpp_buffer->userptr = buffer->m.planes[0].m.userptr;
-
-		memcpy(mpp_buffer_get_ptr(rkmpp_buffer->rkmpp_buf),
-		       (void *)rkmpp_buffer->userptr,
-		       rkmpp_buffer->bytesused);
+	ret = rkmpp_from_v4l2_buffer(ctx, buffer, rkmpp_buffer);
+	if (ret < 0) {
+		LOGE("failed to convert buffer\n");
+		RETURN_ERR(EINVAL, -1);
 	}
 
 	LOGV(3, "enqueue buffer: %d(%ld), size: %d, type: %d, fd: %d\n",
@@ -578,6 +579,7 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 {
 	struct rkmpp_buf_queue *queue;
 	struct rkmpp_buffer *rkmpp_buffer;
+	int ret;
 
 	ENTER();
 
@@ -599,37 +601,26 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 	pthread_mutex_lock(&queue->queue_mutex);
 	rkmpp_buffer = TAILQ_FIRST(&queue->avail_buffers);
 	TAILQ_REMOVE(&queue->avail_buffers, rkmpp_buffer, entry);
-	rkmpp_buffer_clr_available(rkmpp_buffer);
 	pthread_mutex_unlock(&queue->queue_mutex);
 
 	/* Update poll event after avail list changed */
 	rkmpp_update_poll_event(ctx);
 
-	assert(buffer->length == 1);
-	buffer->m.planes[0].bytesused = rkmpp_buffer->bytesused;
-	buffer->timestamp.tv_sec = rkmpp_buffer->timestamp / 1000000;
-	buffer->timestamp.tv_usec = rkmpp_buffer->timestamp % 1000000;
+	ret = rkmpp_to_v4l2_buffer(ctx, rkmpp_buffer, buffer);
+	if (ret < 0) {
+		LOGE("failed to convert buffer\n");
+		RETURN_ERR(EINVAL, -1);
+	}
 
-	buffer->flags = V4L2_BUF_FLAG_DONE;
-	if (rkmpp_buffer_error(rkmpp_buffer)) {
-		buffer->flags |= V4L2_BUF_FLAG_ERROR;
+	if (rkmpp_buffer_keyframe(rkmpp_buffer))
+		rkmpp_buffer_clr_keyframe(rkmpp_buffer);
+	if (rkmpp_buffer_error(rkmpp_buffer))
 		rkmpp_buffer_clr_error(rkmpp_buffer);
-	}
-
-	if (buffer->memory == V4L2_MEMORY_USERPTR) {
-		rkmpp_buffer->userptr = buffer->m.planes[0].m.userptr;
-
-		memcpy((void *)rkmpp_buffer->userptr,
-		       mpp_buffer_get_ptr(rkmpp_buffer->rkmpp_buf),
-		       rkmpp_buffer->bytesused);
-	}
-
-	buffer->index = rkmpp_buffer->index;
-
+	rkmpp_buffer_clr_available(rkmpp_buffer);
 	rkmpp_buffer_clr_queued(rkmpp_buffer);
 
-	LOGV(3, "dequeue buffer: %d(%ld), size: %d, type: %d\n",
-	     buffer->index, buffer->timestamp.tv_sec,
+	LOGV(3, "dequeue buffer: %d(%" PRIu64 "), size: %d, type: %d\n",
+	     buffer->index, rkmpp_buffer->timestamp,
 	     rkmpp_buffer->bytesused, buffer->type);
 
 	LEAVE();
@@ -644,8 +635,10 @@ int rkmpp_update_poll_event(struct rkmpp_context *ctx)
 
 	ENTER();
 
-//	if (ctx->is_decoder)
+	if (ctx->is_decoder)
 		has_event = rkmpp_dec_has_event(ctx->data);
+	else
+		has_event = rkmpp_enc_has_event(ctx->data);
 
 	has_event |= !TAILQ_EMPTY(&ctx->output.avail_buffers);
 	has_event |= !TAILQ_EMPTY(&ctx->capture.avail_buffers);
@@ -658,6 +651,34 @@ int rkmpp_update_poll_event(struct rkmpp_context *ctx)
 
 	LEAVE();
 	return ret;
+}
+
+static int rkmpp_parse_options(struct rkmpp_context *ctx, int fd)
+{
+	char options[1024] = {0};
+	int ret;
+
+	ENTER();
+
+	// TODO: Support more options
+	ret = read(fd, options, sizeof(options) - 1);
+
+	LOGV(1, "parsing options: %s\n", options);
+
+	if (!ret || !strncmp(options, "dec", 3)) {
+		ctx->is_decoder = true;
+	} else if (!strncmp(options, "enc", 3)) {
+		ctx->is_decoder = false;
+	} else {
+		LOGE("unknown options\n");
+		RETURN_ERR(ENODEV, -1);
+	}
+
+	if (fcntl(fd, F_GETFL) & O_NONBLOCK)
+		ctx->nonblock = true;
+
+	LEAVE();
+	return 0;
 }
 
 static void *plugin_init(int fd)
@@ -676,11 +697,10 @@ static void *plugin_init(int fd)
 	if (!ctx)
 		RETURN_ERR(ENOMEM, NULL);
 
-	// TODO: Read mpp mode(dec/enc) and options from fd
-//	ctx->is_decoder = true;
-
-	if (fcntl(fd, F_GETFL) & O_NONBLOCK)
-		ctx->nonblock = true;
+	if (rkmpp_parse_options(ctx, fd) < 0){
+		LOGE("failed to parse option\n");
+		goto err_free_ctx;
+	}
 
 	/* Create eventfd to fake poll events */
 	ctx->eventfd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -721,8 +741,10 @@ static void *plugin_init(int fd)
 		goto err_close_eventfd;
 	}
 
-//	if (ctx->is_decoder)
+	if (ctx->is_decoder)
 		ctx->data = rkmpp_dec_init(ctx);
+	else
+		ctx->data = rkmpp_enc_init(ctx);
 
 	if (!ctx->data)
 		goto err_put_group;
@@ -750,8 +772,10 @@ static void plugin_close(void *dev_ops_priv)
 
 	LOGV(1, "ctx(%p): closing plugin\n", ctx);
 
-//	if (ctx->is_decoder)
+	if (ctx->is_decoder)
 		rkmpp_dec_deinit(ctx->data);
+	else
+		rkmpp_enc_deinit(ctx->data);
 
 	rkmpp_destroy_buffers(ctx, &ctx->output);
 	if (ctx->output.group)
@@ -783,8 +807,10 @@ static int plugin_ioctl(void *dev_ops_priv, int fd,
 
 	LOGV(4, "ctx(%p): %s\n", ctx, rkmpp_cmd2str(cmd));
 
-//	if (ctx->is_decoder)
+	if (ctx->is_decoder)
 		ret = rkmpp_dec_ioctl(ctx->data, cmd, arg);
+	else
+		ret = rkmpp_enc_ioctl(ctx->data, cmd, arg);
 
 	LOGV(4, "ctx(%p): %s  ret: %d\n", ctx, rkmpp_cmd2str(cmd), ret);
 

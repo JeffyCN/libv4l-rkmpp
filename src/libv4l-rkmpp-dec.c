@@ -16,12 +16,15 @@
 
 #include "libv4l-rkmpp-dec.h"
 
+#define RKMPP_DEC_POLL_TIMEOUT_MS	1
+
 static const struct rkmpp_fmt rkmpp_dec_fmts[] = {
 	{
 		.name = "4:2:0 1 plane Y/CbCr",
 		.fourcc = V4L2_PIX_FMT_NV12,
 		.num_planes = 1,
 		.type = MPP_VIDEO_CodingNone,
+		.format = MPP_FMT_YUV420SP,
 		.depth = { 12 },
 	},
 	{
@@ -29,6 +32,7 @@ static const struct rkmpp_fmt rkmpp_dec_fmts[] = {
 		.fourcc = V4L2_PIX_FMT_H264,
 		.num_planes = 1,
 		.type = MPP_VIDEO_CodingAVC,
+		.format = MPP_FMT_BUTT,
 		.frmsize = {
 			.min_width = 48,
 			.max_width = 3840,
@@ -43,6 +47,7 @@ static const struct rkmpp_fmt rkmpp_dec_fmts[] = {
 		.fourcc = V4L2_PIX_FMT_VP8,
 		.num_planes = 1,
 		.type = MPP_VIDEO_CodingVP8,
+		.format = MPP_FMT_BUTT,
 		.frmsize = {
 			.min_width = 48,
 			.max_width = 3840,
@@ -58,6 +63,7 @@ static const struct rkmpp_fmt rkmpp_dec_fmts[] = {
 		.fourcc = V4L2_PIX_FMT_VP9_FRAME,
 		.num_planes = 1,
 		.type = MPP_VIDEO_CodingVP9,
+		.format = MPP_FMT_BUTT,
 		.frmsize = {
 			.min_width = 48,
 			.max_width = 3840,
@@ -107,7 +113,7 @@ static void rkmpp_put_packets(struct rkmpp_dec_context *dec)
 
 		/* Hold eos packet until eos frame received(flushed) */
 		if (is_eos) {
-			LOGV(1, "Hold eos packet: %d\n",
+			LOGV(1, "hold eos packet: %d\n",
 			     rkmpp_buffer->index);
 			dec->eos_packet = rkmpp_buffer;
 			break;
@@ -454,7 +460,7 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 	}
 
 	/* Enable timeout mode to avoid hang during get_frame */
-	poll_type = RKMPP_POLL_TIMEOUT_MS;
+	poll_type = RKMPP_DEC_POLL_TIMEOUT_MS;
 	ret = ctx->mpi->control(ctx->mpp, MPP_SET_OUTPUT_TIMEOUT,
 				(MppParam)&poll_type);
 	if (ret != MPP_OK) {
@@ -516,7 +522,7 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 	/* Update poll event after avail list changed */
 	rkmpp_update_poll_event(ctx);
 
-	/* Reset buffer states*/
+	/* Reset buffer states */
 	for (i = 0; i < queue->num_buffers; i++) {
 		rkmpp_buffer = &queue->buffers[i];
 

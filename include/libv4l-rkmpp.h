@@ -66,6 +66,23 @@ extern int rkmpp_log_level;
 /* From kernel's linux/kernel.h */
 #define ARRAY_SIZE(arr)		(sizeof(arr) / sizeof((arr)[0]))
 
+#define min(x, y) ({ 				\
+	typeof(x) _min1 = (x); 			\
+	typeof(y) _min2 = (y); 			\
+	(void) (&_min1 == &_min2); 		\
+	_min1 < _min2 ? _min1 : _min2; })
+
+#define max(x, y) ({ 				\
+	typeof(x) _max1 = (x); 			\
+	typeof(y) _max2 = (y); 			\
+	(void) (&_max1 == &_max2); 		\
+	_max1 > _max2 ? _max1 : _max2; })
+
+#define clamp(val, lo, hi) 	min((typeof(val))max(val, lo), hi)
+
+#define __round_mask(x, y)	((__typeof__(x))((y)-1))
+#define round_up(x, y)		((((x)-1) | __round_mask(x, y))+1)
+
 /* From kernel's linux/stddef.h */
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)
@@ -79,10 +96,11 @@ extern int rkmpp_log_level;
 	       offsetof(typeof(*(p)), field) - sizeof((p)->field))
 
 #define MPP_VIDEO_CodingNone	MPP_VIDEO_CodingUnused
-#define RKMPP_POLL_TIMEOUT_MS	1
 
-#define RKMPP_MB_DIM           16
-#define RKMPP_SB_DIM           64
+#define RKMPP_MB_DIM		16
+#define RKMPP_SB_DIM		64
+
+#define RKMPP_MAX_PLANE		3
 
 #define RKMPP_MEM_OFFSET(type, index) \
 	((int64_t) ((type) << 16 | (index)))
@@ -95,6 +113,7 @@ extern int rkmpp_log_level;
  * @fourcc:		Format's forcc.
  * @num_planes:		Number of planes.
  * @type:		Format's mpp coding type.
+ * @format:		Format's mpp frame format.
  * @depth:		Format's pixel depth.
  * @frmsize:		V4L2 frmsize_stepwise.
  */
@@ -103,6 +122,7 @@ struct rkmpp_fmt {
 	uint32_t fourcc;
 	int num_planes;
 	MppCodingType type;
+	MppFrameFormat format;
 	uint8_t depth[VIDEO_MAX_PLANES];
 	struct v4l2_frmsize_stepwise frmsize;
 };
@@ -125,6 +145,7 @@ enum rkmpp_buffer_flag {
 	RKMPP_BUFFER_QUEUED	= 1 << 4,
 	RKMPP_BUFFER_PENDING	= 1 << 5,
 	RKMPP_BUFFER_AVAILABLE	= 1 << 6,
+	RKMPP_BUFFER_KEYFRAME	= 1 << 7,
 };
 
 /**
@@ -133,10 +154,12 @@ enum rkmpp_buffer_flag {
  * @rkmpp_buf:		Handle of mpp buffer.
  * @index:		Buffer's index.
  * @fd:			Buffer's dma fd.
- * @userptr:		Buffer's userspace ptr.
  * @timestamp:		Buffer's timestamp.
  * @bytesused:		Number of bytes occupied by data in the buffer.
+ * @length:		Buffer's length(planes).
+ * @size:		Buffer's size.
  * @flags:		Buffer's flags.
+ * @planes:		Buffer's planes info.
  */
 struct rkmpp_buffer {
 	TAILQ_ENTRY(rkmpp_buffer) entry;
@@ -145,10 +168,20 @@ struct rkmpp_buffer {
 	int index;
 
 	int fd;
-	unsigned long userptr;
 	uint64_t timestamp;
 	uint32_t bytesused;
+	uint32_t length;
 	uint32_t flags;
+	uint32_t size;
+
+	struct {
+		unsigned long userptr;
+		int fd;
+		uint32_t data_offset;
+		uint32_t bytesused;
+		uint32_t plane_size; /* bytesused - data_offset */
+		uint32_t length;
+	} planes[RKMPP_MAX_PLANE];
 };
 
 TAILQ_HEAD(rkmpp_buf_head, rkmpp_buffer);
@@ -370,6 +403,7 @@ RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_EXPORTED, exported)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_QUEUED, queued)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_PENDING, pending)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_AVAILABLE, available)
+RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_KEYFRAME, keyframe)
 
 void rkmpp_new_frame(struct rkmpp_context *ctx);
 int rkmpp_update_poll_event(struct rkmpp_context *ctx);
@@ -387,5 +421,14 @@ int rkmpp_expbuf(struct rkmpp_context *ctx,
 		 struct v4l2_exportbuffer *expbuf);
 int rkmpp_qbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer);
 int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer);
+
+/* Utils */
+
+int rkmpp_to_v4l2_buffer(struct rkmpp_context *ctx,
+			 struct rkmpp_buffer *rkmpp_buffer,
+			 struct v4l2_buffer *buffer);
+int rkmpp_from_v4l2_buffer(struct rkmpp_context *ctx,
+			   struct v4l2_buffer *buffer,
+			   struct rkmpp_buffer *rkmpp_buffer);
 
 #endif //LIBV4L_RKMPP_H
