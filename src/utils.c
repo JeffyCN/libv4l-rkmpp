@@ -57,11 +57,11 @@ static int rkmpp_rga_copy(struct rkmpp_context *ctx,
 	switch (pix_fmt) {
 	case V4L2_PIX_FMT_NV12:
 	case V4L2_PIX_FMT_NV12M:
-		rga_format = RK_FORMAT_YCrCb_420_SP;
+		rga_format = RK_FORMAT_YCbCr_420_SP;
 		break;
 	case V4L2_PIX_FMT_NV21:
 	case V4L2_PIX_FMT_NV21M:
-		rga_format = RK_FORMAT_YCbCr_420_SP;
+		rga_format = RK_FORMAT_YCrCb_420_SP;
 		break;
 	case V4L2_PIX_FMT_YUV420:
 	case V4L2_PIX_FMT_YUV420M:
