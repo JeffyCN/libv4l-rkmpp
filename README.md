@@ -7,7 +7,7 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 ## Dependencies
 
 * [v4l-utils](https://git.linuxtv.org/v4l-utils.git) - with this patch:  
-  [0001-libv4l2-Support-mmap-to-libv4l-plugin.patch](https://github.com/JeffyCN/meta-rockchip/blob/master/common/recipes-multimedia/v4l2apps/v4l-utils/0001-libv4l2-Support-mmap-to-libv4l-plugin.patch)
+  [0001-libv4l2-Support-mmap-to-libv4l-plugin.patch](https://github.com/JeffyCN/meta-rockchip/blob/release-1.1.0_20191030/recipes-multimedia/v4l2apps/v4l-utils/0001-libv4l2-Support-mmap-to-libv4l-plugin.patch)
 * [rockchip-mpp](https://github.com/rockchip-linux/mpp)
 * [linux-rga](https://github.com/rockchip-linux/linux-rga)
 
