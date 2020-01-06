@@ -12,6 +12,7 @@
  *  GNU General Public License for more details.
  */
 
+#include <xf86drm.h>
 #include <sys/mman.h>
 
 #include "libv4l-rkmpp.h"
@@ -221,7 +222,8 @@ int rkmpp_to_v4l2_buffer(struct rkmpp_context *ctx,
 			 struct rkmpp_buffer *rkmpp_buffer,
 			 struct v4l2_buffer *buffer)
 {
-	int i;
+	struct drm_mode_map_dumb args = {0};
+	int i, ret;
 
 	ENTER();
 
@@ -231,6 +233,22 @@ int rkmpp_to_v4l2_buffer(struct rkmpp_context *ctx,
 		return -1;
 	}
 
+	ret = drmPrimeFDToHandle(ctx->drm_fd, rkmpp_buffer->fd, &args.handle);
+	if (ret < 0) {
+		LOGE("failed to get drm handle from fd: %d)\n",
+		     rkmpp_buffer->fd);
+		return ret;
+	}
+
+	ret = drmIoctl(ctx->drm_fd, DRM_IOCTL_MODE_MAP_DUMB, &args);
+	if (ret < 0) {
+		LOGE("failed to map drm dumb from fd: %d)\n",
+		     rkmpp_buffer->fd);
+		return ret;
+	}
+
+	rkmpp_buffer->mem_offset = args.offset;
+
 	for (i = 0; i < buffer->length; i++) {
 		buffer->m.planes[i].length = rkmpp_buffer->planes[i].length;
 		buffer->m.planes[i].data_offset =
@@ -238,7 +256,8 @@ int rkmpp_to_v4l2_buffer(struct rkmpp_context *ctx,
 		buffer->m.planes[i].bytesused = 0;
 
 		if (buffer->memory == V4L2_MEMORY_MMAP)
-			buffer->m.planes[i].m.mem_offset =
+			/* Only support mem_offset for plane 0 */
+			buffer->m.planes[i].m.mem_offset = i ? 0 :
 				RKMPP_MEM_OFFSET(buffer->type, buffer->index);
 		else if (buffer->memory == V4L2_MEMORY_USERPTR)
 			buffer->m.planes[i].m.userptr =
@@ -265,8 +284,6 @@ int rkmpp_to_v4l2_buffer(struct rkmpp_context *ctx,
 		buffer->flags |= V4L2_BUF_FLAG_KEYFRAME;
 	if (rkmpp_buffer_error(rkmpp_buffer))
 		buffer->flags |= V4L2_BUF_FLAG_ERROR;
-	if (rkmpp_buffer_mapped(rkmpp_buffer))
-		buffer->flags |= V4L2_BUF_FLAG_MAPPED;
 	if (rkmpp_buffer_queued(rkmpp_buffer)) {
 		buffer->flags |= V4L2_BUF_FLAG_QUEUED;
 		if (rkmpp_buffer_available(rkmpp_buffer))

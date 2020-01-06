@@ -131,7 +131,6 @@ struct rkmpp_fmt {
  * enum rkmpp_buffer_flag - Flags of rkmpp buffer
  * @ERROR:		Something wrong in the buffer.
  * @LOCKED:		Buffer been locked from mpp buffer group.
- * @MAPPED:		Buffer been mapped to userspace(cannot trace unmap now).
  * @EXPORTED:		Buffer been exported to userspace.
  * @QUEUED:		Buffer been queued.
  * @PENDING:		Buffer is in pending queue.
@@ -140,12 +139,11 @@ struct rkmpp_fmt {
 enum rkmpp_buffer_flag {
 	RKMPP_BUFFER_ERROR	= 1 << 0,
 	RKMPP_BUFFER_LOCKED	= 1 << 1,
-	RKMPP_BUFFER_MAPPED	= 1 << 2,
-	RKMPP_BUFFER_EXPORTED	= 1 << 3,
-	RKMPP_BUFFER_QUEUED	= 1 << 4,
-	RKMPP_BUFFER_PENDING	= 1 << 5,
-	RKMPP_BUFFER_AVAILABLE	= 1 << 6,
-	RKMPP_BUFFER_KEYFRAME	= 1 << 7,
+	RKMPP_BUFFER_EXPORTED	= 1 << 2,
+	RKMPP_BUFFER_QUEUED	= 1 << 3,
+	RKMPP_BUFFER_PENDING	= 1 << 4,
+	RKMPP_BUFFER_AVAILABLE	= 1 << 5,
+	RKMPP_BUFFER_KEYFRAME	= 1 << 6,
 };
 
 /**
@@ -173,6 +171,7 @@ struct rkmpp_buffer {
 	uint32_t length;
 	uint32_t flags;
 	uint32_t size;
+	uint64_t mem_offset;
 
 	struct {
 		unsigned long userptr;
@@ -242,6 +241,7 @@ struct rkmpp_context {
 	bool is_decoder;
 	bool nonblock;
 	int eventfd;
+	int drm_fd;
 
 	MppCtx mpp;
 	MppApi *mpi;
@@ -398,7 +398,6 @@ static inline void rkmpp_buffer_clr_ ## name(struct rkmpp_buffer *buffer) \
 
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_ERROR, error)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_LOCKED, locked)
-RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_MAPPED, mapped)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_EXPORTED, exported)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_QUEUED, queued)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_PENDING, pending)

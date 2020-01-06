@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <sys/mman.h>
 #include <linux/version.h>
 
 #include "libv4l-plugin.h"
@@ -697,16 +698,22 @@ static void *plugin_init(int fd)
 	if (!ctx)
 		RETURN_ERR(ENOMEM, NULL);
 
+	ctx->drm_fd = open("/dev/dri/card0", O_RDWR);
+	if (ctx->drm_fd < 0) {
+		LOGE("failed to open drm device\n");
+		goto err_free_ctx;
+	}
+
 	if (rkmpp_parse_options(ctx, fd) < 0){
 		LOGE("failed to parse option\n");
-		goto err_free_ctx;
+		goto err_close_drm_fd;
 	}
 
 	/* Create eventfd to fake poll events */
 	ctx->eventfd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 	if (ctx->eventfd < 0) {
 		LOGE("failed to create eventfd\n");
-		goto err_free_ctx;
+		goto err_close_drm_fd;
 	}
 
 	epollfd = epoll_create(1);
@@ -759,6 +766,8 @@ err_close_epollfd:
 	close(epollfd);
 err_close_eventfd:
 	close(ctx->eventfd);
+err_close_drm_fd:
+	close(ctx->drm_fd);
 err_free_ctx:
 	free(ctx);
 	RETURN_ERR(errno, NULL);
@@ -788,6 +797,7 @@ static void plugin_close(void *dev_ops_priv)
 	mpp_buffer_group_put(ctx->mem_group);
 
 	close(ctx->eventfd);
+	close(ctx->drm_fd);
 	free(ctx);
 
 	LEAVE();
@@ -838,6 +848,11 @@ static void *plugin_mmap(void *dev_ops_priv, void *start,
 		RETURN_ERR(EINVAL, NULL);
 	}
 
+	if (!offset) {
+		LOGE("only support mapping plane 0\n");
+		RETURN_ERR(EINVAL, NULL);
+	}
+
 	queue = rkmpp_get_queue(ctx, RKMPP_MEM_OFFSET_TYPE(offset));
 	if (!queue)
 		RETURN_ERR(errno, NULL);
@@ -853,11 +868,11 @@ static void *plugin_mmap(void *dev_ops_priv, void *start,
 		RETURN_ERR(EINVAL, NULL);
 	}
 
-	ptr = mpp_buffer_get_ptr(queue->buffers[index].rkmpp_buf);
+	ptr = mmap(start, length, prot, flags, ctx->drm_fd,
+		   queue->buffers[index].mem_offset);
 
-	LOGV(1, "mmap buffer(%d): %p, fd: %d\n", index, ptr, queue->buffers[index].fd);
-
-	rkmpp_buffer_set_mapped(&queue->buffers[index]);
+	LOGV(1, "mmap buffer(%d): %p, fd: %d\n", index, ptr,
+	     queue->buffers[index].fd);
 
 	LEAVE();
 	return ptr;

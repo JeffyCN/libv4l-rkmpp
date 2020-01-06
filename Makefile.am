@@ -15,9 +15,9 @@ libv4l_rkmpp_la_SOURCES = \
 	src/libv4l-rkmpp-enc.c
 
 libv4l_rkmpp_la_CFLAGS = \
-	$(LIBV4L2_CFLAGS) $(RKMPP_CFLAGS) -I$(top_srcdir)/include
+	$(LIBV4L2_CFLAGS) $(DRM_CFLAGS) $(RKMPP_CFLAGS) -I$(top_srcdir)/include
 libv4l_rkmpp_la_CPPFLAGS = $(CFLAG_VISIBILITY)
-libv4l_rkmpp_la_LIBADD = $(RKMPP_LIBS)
+libv4l_rkmpp_la_LIBADD = $(DRM_LIBS) $(RKMPP_LIBS)
 libv4l_rkmpp_la_LDFLAGS = -avoid-version -module -shared -export-dynamic
 
 EXTRA_DIST = COPYING
