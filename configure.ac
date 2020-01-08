@@ -28,16 +28,23 @@ AC_PROG_MAKE_SET
 AC_PROG_RANLIB
 
 # Checks for libraries.
-AC_CHECK_LIB([pthread], [pthread_create])
+AC_CHECK_LIB([pthread], [pthread_create], [], AC_MSG_ERROR([pthread not found]))
 PKG_PROG_PKG_CONFIG
 PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.0])
 PKG_CHECK_MODULES(RKMPP, rockchip_mpp >= 1.3.8)
 PKG_CHECK_MODULES(LIBV4L2, libv4l2 >= 1.4.1)
-AC_CHECK_LIB([rga], [c_RkRgaInit])
 
 # Checks for header files.
 AC_CHECK_HEADERS([fcntl.h inttypes.h stdint.h stdlib.h string.h unistd.h])
-AC_CHECK_HEADERS([rga/RgaApi.h])
+
+# Checks for rockchip rga.
+AC_CHECK_HEADERS([rga/RgaApi.h],
+	AC_CHECK_LIB([rga], [c_RkRgaInit], HAVE_RGA=yes))
+if test "x$HAVE_RGA" = xyes;then
+	AC_SUBST(RGA_LIBS, "-lrga")
+else
+	AC_MSG_WARN([build without rockchip rga])
+fi
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_CHECK_HEADER_STDBOOL
