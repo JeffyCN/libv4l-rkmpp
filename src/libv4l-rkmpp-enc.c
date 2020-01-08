@@ -17,6 +17,10 @@
 
 #include "libv4l-rkmpp-enc.h"
 
+#ifndef V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME
+#define V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME	(V4L2_CID_MPEG_BASE+229)
+#endif
+
 #define RKMPP_ENC_POLL_TIMEOUT_MS	100
 
 static const struct rkmpp_fmt rkmpp_enc_fmts[] = {
