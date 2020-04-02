@@ -762,7 +762,12 @@ static int rkmpp_enc_queryctrl(struct rkmpp_enc_context *enc,
 static int rkmpp_enc_force_keyframe(struct rkmpp_enc_context *enc)
 {
 	struct rkmpp_context *ctx = enc->ctx;
+	const struct rkmpp_fmt *rkmpp_fmt = ctx->capture.rkmpp_format;
 	MPP_RET ret;
+
+	/* VP8 encoder doesn't support this */
+	if (rkmpp_fmt && rkmpp_fmt->type == MPP_VIDEO_CodingVP8)
+		return 0;
 
 	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_IDR_FRAME, NULL);
 	if (ret != MPP_OK) {
