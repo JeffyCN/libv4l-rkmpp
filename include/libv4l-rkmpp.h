@@ -33,10 +33,6 @@
 #include "config.h"
 #include "linux/videodev2.h"
 
-#ifndef V4L2_PIX_FMT_VP9_FRAME
-#define V4L2_PIX_FMT_VP9_FRAME v4l2_fourcc('V', 'P', '9', 'F')
-#endif
-
 #define LIBV4L_RKMPP_VERSION "1.2.2~20200108"
 
 extern int rkmpp_log_level;

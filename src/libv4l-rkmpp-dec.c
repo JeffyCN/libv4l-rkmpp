@@ -60,7 +60,7 @@ static const struct rkmpp_fmt rkmpp_dec_fmts[] = {
 	/* VP9 only enabled in chromeos */
 	{
 		.name = "VP9",
-		.fourcc = V4L2_PIX_FMT_VP9_FRAME,
+		.fourcc = V4L2_PIX_FMT_VP9,
 		.num_planes = 1,
 		.type = MPP_VIDEO_CodingVP9,
 		.format = MPP_FMT_BUTT,
