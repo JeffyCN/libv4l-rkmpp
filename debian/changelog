@@ -1,3 +1,22 @@
+libv4l-rkmpp (1.2.3-1) unstable; urgency=medium
+
+  * Remove license in Makefile.am
+  * Add V4L2_PIX_FMT_VP9 to dec.h for old linux headers
+  * Add encoder support
+  * README.md: Fix dead link
+  * Fix wrong RGA format maps for NV12/NV21
+  * Fix random crash when trying to access packet in mpp
+  * Fix linking errors
+  * Define V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME for old kernel
+  headers
+  * dec: Fix wrong fourcc for VP9
+  * enc: Ignore keyframe request for VP8
+  * dec: Support dynamic info changing
+  * d/control: Fix description error
+  * d/rules: Add autoreconf
+
+ -- Jeffy Chen <jeffy.chen@rock-chips.com>  Fri, 03 Apr 2020 11:10:35 +0800
+
 libv4l-rkmpp (1.1.0-1) unstable; urgency=medium
 
   * Initial release
