@@ -15,7 +15,7 @@
 
 
 %:
-	dh $@ --with autotools_dev
+	dh $@ --with autotools_dev --with autoreconf
 
 
 # dh_make generated override targets
