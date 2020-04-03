@@ -185,7 +185,8 @@ TAILQ_HEAD(rkmpp_buf_head, rkmpp_buffer);
  * struct rkmpp_buf_head - Information about mpp buffer queue
  * @memory:		V4L2 memory type.
  * @streaming:		The queue is streaming.
- * @group:		Handle of mpp buffer group.
+ * @internal_group:	Handle of mpp internal buffer group.
+ * @external_group:	Handle of mpp external buffer group.
  * @buffers:		List of buffers.
  * @num_buffers:	Number of buffers.
  * @avail_buffers:	Buffers ready to be dequeued.
@@ -199,7 +200,8 @@ struct rkmpp_buf_queue {
 
 	bool streaming;
 
-	MppBufferGroup group;
+	MppBufferGroup internal_group;
+	MppBufferGroup external_group;
 	struct rkmpp_buffer *buffers;
 	uint32_t num_buffers;
 
@@ -222,7 +224,6 @@ struct rkmpp_buf_queue {
  * @pending_buffers:	Pending buffers for mpp.
  * @mpp:		Handler of mpp context.
  * @mpi:		Handler of mpp api.
- * @mem_group:		Global mpp buffer group.
  * @output:		Output queue.
  * @capture:		Capture queue.
  * @ioctl_mutex:	Mutex.
@@ -241,7 +242,6 @@ struct rkmpp_context {
 
 	MppCtx mpp;
 	MppApi *mpi;
-	MppBufferGroup mem_group;
 
 	struct rkmpp_buf_queue output;
 	struct rkmpp_buf_queue capture;

@@ -388,13 +388,15 @@ static int rkmpp_dec_dqevent(struct rkmpp_dec_context *dec,
 	ENTER();
 
 	if (!dec->event_subscribed || !dec->video_info.event) {
-		LOGE("no available event\n");
-		RETURN_ERR(EINVAL, -1);
+		LOGV(4, "no available event\n");
+		errno = ENOENT;
+		return -1;
 	}
 
 	event->type = V4L2_EVENT_SOURCE_CHANGE;
 	event->u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION;
 	dec->video_info.event = false;
+	LOGV(1, "dequeue resolution change event\n");
 
 	LEAVE();
 	return 0;
@@ -471,7 +473,7 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 	/* Use external buffer mode for capture queue */
 	ret = ctx->mpi->control(ctx->mpp,
 				MPP_DEC_SET_EXT_BUF_GROUP,
-				ctx->capture.group);
+				ctx->capture.external_group);
 	if (ret != MPP_OK) {
 		LOGE("failed to set buffer group\n");
 		goto err_destroy_mpp;
@@ -549,7 +551,8 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 		dec->eos_packet = NULL;
 
 	/* Stop mpp streaming when all queues stopped */
-	if (!dec->mpp_streaming) {
+	if (!dec->mpp_streaming ||
+	    ctx->output.streaming || ctx->capture.streaming) {
 		pthread_mutex_unlock(&dec->decoder_mutex);
 		goto out;
 	}
@@ -656,7 +659,7 @@ void *rkmpp_dec_init(struct rkmpp_context *ctx)
 		RETURN_ERR(ENOMEM, NULL);
 
 	/* Using external buffer mode to limit buffers */
-	ret = mpp_buffer_group_get_external(&ctx->capture.group,
+	ret = mpp_buffer_group_get_external(&ctx->capture.external_group,
 					    MPP_BUFFER_TYPE_DRM);
 	if (ret != MPP_OK) {
 		LOGE("failed to use mpp ext drm buf group\n");

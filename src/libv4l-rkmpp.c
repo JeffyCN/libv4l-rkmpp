@@ -99,8 +99,10 @@ static void rkmpp_destroy_buffers(struct rkmpp_context *ctx,
 		queue->buffers = NULL;
 	}
 
-	if (queue->group)
-		mpp_buffer_group_clear(queue->group);
+	mpp_buffer_group_clear(queue->internal_group);
+
+	if (queue->external_group)
+		mpp_buffer_group_clear(queue->external_group);
 
 	queue->num_buffers = 0;
 }
@@ -383,7 +385,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 	for (i = 0, sizeimage = 0; i < queue->format.num_planes; i++)
 		sizeimage += queue->format.plane_fmt[i].sizeimage;
 
-	if (!sizeimage || !ctx->mem_group) {
+	if (!sizeimage) {
 		LOGE("unable to create buffers\n");
 		goto err;
 	}
@@ -408,7 +410,8 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 
 	/* Allocate all buffers from main buffer pool */
 	for (i = 0; i < queue->num_buffers; i++) {
-		ret = mpp_buffer_get(ctx->mem_group, &buffer, sizeimage);
+		ret = mpp_buffer_get(queue->internal_group,
+				     &buffer, sizeimage);
 		if (ret != MPP_OK) {
 			LOGE("unable to alloc buffer\n");
 			goto err;
@@ -427,7 +430,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 		     i, queue->buffers[i].fd);
 	}
 
-	if (!queue->group)
+	if (!queue->external_group)
 		goto out;
 
 	/* External buffer mode (for pre-allocated buffers) */
@@ -436,7 +439,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 
 		/* Move buffers into queue's buffer pool */
 		mpp_buffer_info_get(buffer, &commit);
-		ret = mpp_buffer_commit(queue->group, &commit);
+		ret = mpp_buffer_commit(queue->external_group, &commit);
 		if (ret != MPP_OK) {
 			LOGE("unable to commit buffer\n");
 			goto err;
@@ -444,7 +447,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 		mpp_buffer_put(buffer);
 
 		/* Lock all buffers again */
-		ret = mpp_buffer_get(queue->group, &buffer, sizeimage);
+		ret = mpp_buffer_get(queue->external_group, &buffer, sizeimage);
 		if (ret != MPP_OK) {
 			LOGE("unable to lock buffer\n");
 			goto err;
@@ -740,12 +743,20 @@ static void *plugin_init(int fd)
 	pthread_mutex_init(&ctx->output.queue_mutex, NULL);
 	pthread_mutex_init(&ctx->capture.queue_mutex, NULL);
 
-	ret = mpp_buffer_group_get_internal(&ctx->mem_group,
+	ret = mpp_buffer_group_get_internal(&ctx->output.internal_group,
 					    MPP_BUFFER_TYPE_DRM);
 	if (ret != MPP_OK) {
 		LOGE("failed to use mpp drm buf group\n");
 		errno = ENODEV;
 		goto err_close_eventfd;
+	}
+
+	ret = mpp_buffer_group_get_internal(&ctx->capture.internal_group,
+					    MPP_BUFFER_TYPE_DRM);
+	if (ret != MPP_OK) {
+		LOGE("failed to use mpp drm buf group\n");
+		errno = ENODEV;
+		goto err_put_group;
 	}
 
 	if (ctx->is_decoder)
@@ -761,7 +772,11 @@ static void *plugin_init(int fd)
 	LEAVE();
 	return ctx;
 err_put_group:
-	mpp_buffer_group_put(ctx->mem_group);
+	if (ctx->output.internal_group)
+		mpp_buffer_group_put(ctx->output.internal_group);
+
+	if (ctx->capture.internal_group)
+		mpp_buffer_group_put(ctx->capture.internal_group);
 err_close_epollfd:
 	close(epollfd);
 err_close_eventfd:
@@ -787,14 +802,20 @@ static void plugin_close(void *dev_ops_priv)
 		rkmpp_enc_deinit(ctx->data);
 
 	rkmpp_destroy_buffers(ctx, &ctx->output);
-	if (ctx->output.group)
-		mpp_buffer_group_put(ctx->output.group);
+
+	if (ctx->output.internal_group)
+		mpp_buffer_group_put(ctx->output.internal_group);
+
+	if (ctx->output.external_group)
+		mpp_buffer_group_put(ctx->output.external_group);
 
 	rkmpp_destroy_buffers(ctx, &ctx->capture);
-	if (ctx->capture.group)
-		mpp_buffer_group_put(ctx->capture.group);
 
-	mpp_buffer_group_put(ctx->mem_group);
+	if (ctx->capture.external_group)
+		mpp_buffer_group_put(ctx->capture.external_group);
+
+	if (ctx->capture.internal_group)
+		mpp_buffer_group_put(ctx->capture.internal_group);
 
 	close(ctx->eventfd);
 	close(ctx->drm_fd);

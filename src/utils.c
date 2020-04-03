@@ -109,7 +109,7 @@ static int rkmpp_copy_buffer(struct rkmpp_context *ctx,
 	struct rkmpp_buf_queue *queue;
 	const struct rkmpp_fmt *rkmpp_format;
 	const struct v4l2_pix_format_mplane *format;
-	void *rkmpp_ptr = mpp_buffer_get_ptr(rkmpp_buffer->rkmpp_buf);
+	void *rkmpp_ptr;
 	void *addrs[3] = {0};
 	uint32_t sizes[3], offsets[3];
 	int i, ret = -1;
@@ -129,6 +129,7 @@ static int rkmpp_copy_buffer(struct rkmpp_context *ctx,
 	if (!queue)
 		return -1;
 
+	rkmpp_ptr = mpp_buffer_get_ptr(rkmpp_buffer->rkmpp_buf);
 	rkmpp_format = queue->rkmpp_format;
 	format = &queue->format;
 
