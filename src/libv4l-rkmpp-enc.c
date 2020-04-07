@@ -86,21 +86,6 @@ static const struct rkmpp_fmt rkmpp_enc_fmts[] = {
 			.step_height = RKMPP_MB_DIM,
 		},
 	},
-	{
-		.name = "JPEG",
-		.fourcc = V4L2_PIX_FMT_JPEG_RAW,
-		.num_planes = 1,
-		.type = MPP_VIDEO_CodingMJPEG,
-		.format = MPP_FMT_BUTT,
-		.frmsize = {
-			.min_width = 96,
-			.max_width = 8192,
-			.step_width = RKMPP_MB_DIM,
-			.min_height = 96,
-			.max_height = 8192,
-			.step_height = RKMPP_MB_DIM,
-		},
-	},
 };
 
 static int rkmpp_put_frame(struct rkmpp_enc_context *enc)

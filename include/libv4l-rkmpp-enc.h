@@ -17,10 +17,6 @@
 
 #include "libv4l-rkmpp.h"
 
-#ifndef V4L2_PIX_FMT_JPEG_RAW
-#define V4L2_PIX_FMT_JPEG_RAW	v4l2_fourcc('J', 'P', 'G', 'R') /* JFIF JPEG RAW without headers */
-#endif
-
 #ifndef V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR
 #define V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR	(V4L2_CID_MPEG_BASE+388)
 #endif
