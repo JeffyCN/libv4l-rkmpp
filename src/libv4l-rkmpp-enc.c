@@ -88,6 +88,8 @@ static const struct rkmpp_fmt rkmpp_enc_fmts[] = {
 	},
 };
 
+static int rkmpp_enc_apply_rc_cfg(struct rkmpp_enc_context *enc);
+
 static int rkmpp_put_frame(struct rkmpp_enc_context *enc)
 {
 	struct rkmpp_context *ctx = enc->ctx;
@@ -210,8 +212,9 @@ static void *encoder_thread_fn(void *data)
 	struct rkmpp_context *ctx = enc->ctx;
 	struct rkmpp_buffer *rkmpp_buffer, *frame_buffer;
 	MppPacket packet = NULL;
+	MppMeta meta;
 	MPP_RET ret;
-	int index;
+	int index, is_keyframe;
 
 	ENTER();
 
@@ -304,10 +307,19 @@ static void *encoder_thread_fn(void *data)
 
 		rkmpp_packet_to_buffer(enc, packet, rkmpp_buffer);
 
-		/* TODO: Remove this when mpp header updated */
-#define MPP_PACKET_FLAG_INTRA           (0x00000008)
-		if (mpp_packet_get_flag(packet) & MPP_PACKET_FLAG_INTRA)
-			rkmpp_buffer_set_keyframe(rkmpp_buffer);
+		meta = mpp_packet_get_meta(packet);
+		if (meta) {
+			mpp_meta_get_s32(meta, KEY_OUTPUT_INTRA, &is_keyframe);
+
+			if (is_keyframe) {
+				rkmpp_buffer_set_keyframe(rkmpp_buffer);
+
+				if (enc->keyframe_requested > 0) {
+					enc->keyframe_requested--;
+					rkmpp_enc_apply_rc_cfg(enc);
+				}
+			}
+		}
 
 		/* Use pts to track frame buffer */
 		index = mpp_packet_get_pts(packet);
@@ -475,7 +487,8 @@ static int rkmpp_enc_apply_rc_cfg(struct rkmpp_enc_context *enc)
 		rc_cfg.quality = MPP_ENC_RC_QUALITY_CQP;
 	}
 
-	rc_cfg.gop = enc->gop_size;
+	/* Use gop(1) for keyframe requests */
+	rc_cfg.gop = !enc->keyframe_requested ? enc->gop_size : 1;
 
 	/* TODO: Remove this when mpp crash issue fixed */
 	if (!rc_cfg.gop)
@@ -778,25 +791,6 @@ static int rkmpp_enc_queryctrl(struct rkmpp_enc_context *enc,
 	return 0;
 }
 
-static int rkmpp_enc_force_keyframe(struct rkmpp_enc_context *enc)
-{
-	struct rkmpp_context *ctx = enc->ctx;
-	const struct rkmpp_fmt *rkmpp_fmt = ctx->capture.rkmpp_format;
-	MPP_RET ret;
-
-	/* VP8 encoder doesn't support this */
-	if (rkmpp_fmt && rkmpp_fmt->type == MPP_VIDEO_CodingVP8)
-		return 0;
-
-	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_IDR_FRAME, NULL);
-	if (ret != MPP_OK) {
-		LOGE("failed to set idr frame\n");
-		RETURN_ERR(EINVAL, -1);
-	}
-
-	return 0;
-}
-
 static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 				 struct v4l2_ext_controls *ext_ctrls)
 {
@@ -814,11 +808,13 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 		switch (ctrl->id) {
 		case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:
-			LOGV(3, "force keyframe\n");
+			enc->keyframe_requested++;
+			LOGV(3, "request keyframes: %d\n",
+			     enc->keyframe_requested);
 
 			if (enc->mpp_streaming &&
-			    rkmpp_enc_force_keyframe(enc) < 0) {
-				LOGE("failed to force keyframe\n");
+			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
+				LOGE("failed to request keyframe\n");
 				RETURN_ERR(errno, -1);
 			}
 			break;
