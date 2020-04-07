@@ -21,11 +21,17 @@
 #define V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR	(V4L2_CID_MPEG_BASE+388)
 #endif
 
+#define IVF_HEADER_MAGIC	"DKIF"
+#define IVF_HEADER_BYTES	32
+#define IVF_FRAME_BYTES		12
+
 /**
  * struct rkmpp_enc_context - Context private data for encoder
  * @ctx:		Common context data.
  * @mpp_streaming:	The mpp is streaming.
  * @h264:		Enc config for H264.
+ * @vp8:		Enc config for VP8.
+ * @type:		Encoder format type.
  * @mb_rc:		V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE.
  * @rc_reaction_coeff:	V4L2_CID_MPEG_MFC51_VIDEO_RC_REACTION_COEFF.
  * @gop_size:		V4L2_CID_MPEG_VIDEO_GOP_SIZE.
@@ -50,6 +56,15 @@ struct rkmpp_enc_context {
 		bool needs_header;
 		MppPacket header;
 	} h264;
+
+	struct {
+		bool is_ivf;
+	} vp8;
+
+	enum {
+		H264,
+		VP8,
+	} type;
 
 	bool mb_rc;
 	int rc_reaction_coeff;

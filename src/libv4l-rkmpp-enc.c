@@ -273,11 +273,33 @@ static void *encoder_thread_fn(void *data)
 		pthread_mutex_unlock(&ctx->capture.queue_mutex);
 
 		rkmpp_buffer->bytesused = 0;
-		if (enc->h264.needs_header && !enc->h264.separate_header) {
+
+		if (enc->type == H264 && enc->h264.needs_header &&
+		    !enc->h264.separate_header) {
 			/* Join the header to the 1st header */
 			rkmpp_packet_to_buffer(enc, enc->h264.header,
 					       rkmpp_buffer);
 			enc->h264.needs_header = false;
+		} else if (enc->type == VP8) {
+			void *pos = mpp_packet_get_pos(packet);
+			size_t len = mpp_packet_get_length(packet);
+
+			if (!strncmp(pos, IVF_HEADER_MAGIC, 4)) {
+				enc->vp8.is_ivf = true;
+
+				/* Remove the ivf header */
+				pos += IVF_HEADER_BYTES;
+				len -= IVF_HEADER_BYTES;
+			}
+
+			if (enc->vp8.is_ivf) {
+				/* Remove the ivf frame header */
+				pos += IVF_FRAME_BYTES;
+				len -= IVF_FRAME_BYTES;
+			}
+
+			mpp_packet_set_pos(packet, pos);
+			mpp_packet_set_length(packet, len);
 		}
 
 		rkmpp_packet_to_buffer(enc, packet, rkmpp_buffer);
@@ -503,7 +525,6 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 	struct rkmpp_buf_queue *queue;
 	MppPollType poll_type;
 	MPP_RET ret;
-	bool is_h264 = rkmpp_fmt->fourcc == V4L2_PIX_FMT_H264;
 
 	ENTER();
 
@@ -517,6 +538,17 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 
 	if (enc->mpp_streaming)
 		goto out;
+
+	switch (rkmpp_fmt->fourcc) {
+	case V4L2_PIX_FMT_H264:
+		enc->type = H264;
+		break;
+	case V4L2_PIX_FMT_VP8:
+		enc->type = VP8;
+		break;
+	default:
+		RETURN_ERR(errno, -1);
+	}
 
 	LOGV(1, "mpp start streaming\n");
 
@@ -543,12 +575,15 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 		goto err_destroy_mpp;
 	}
 
-	if (is_h264) {
+	if (enc->type == H264) {
 		/* Apply h264's special configs */
 		if (rkmpp_enc_apply_h264_cfg(enc) < 0) {
 			LOGE("failed to apply h264 cfg\n");
 			goto err_destroy_mpp;
 		}
+
+		enc->h264.needs_header = enc->type == H264;
+		enc->h264.header = NULL;
 	}
 
 	/* Apply configs about input frames */
@@ -562,9 +597,6 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 		LOGE("failed to apply rc cfg\n");
 		goto err_destroy_mpp;
 	}
-
-	enc->h264.needs_header = is_h264;
-	enc->h264.header = NULL;
 
 	/* Notify encoder thread to start streaming */
 	pthread_mutex_lock(&enc->encoder_mutex);
