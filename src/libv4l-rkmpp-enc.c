@@ -122,6 +122,8 @@ static int rkmpp_put_frame(struct rkmpp_enc_context *enc)
 	mpp_frame_set_pts(frame, rkmpp_buffer->index);
 
 	ret = ctx->mpi->encode_put_frame(ctx->mpp, frame);
+	mpp_frame_deinit(&frame);
+
 	if (ret != MPP_OK) {
 		LOGE("failed to put frame\n");
 		return -1;
