@@ -1,3 +1,14 @@
+libv4l-rkmpp (1.3.0-1) unstable; urgency=medium
+
+  * enc: Drop JPEG
+  * enc: Adapt to newest MPP
+  * enc: Fix VP8 encode error
+  * enc: Support VP8 keyframe requests
+  * README.md: Update information
+  * Move more logs to level 1
+
+ -- Jeffy Chen <jeffy.chen@rock-chips.com>  Wed, 08 Apr 2020 11:43:33 +0800
+
 libv4l-rkmpp (1.2.3-1) unstable; urgency=medium
 
   * Remove license in Makefile.am
