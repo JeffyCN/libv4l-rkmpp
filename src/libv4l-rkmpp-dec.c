@@ -271,7 +271,7 @@ static void *decoder_thread_fn(void *data)
 			if (dec->eos_packet) {
 				dec->eos_packet->bytesused = 0;
 
-				LOGV(3, "return eos packet: %d\n",
+				LOGV(1, "return eos packet: %d\n",
 				     dec->eos_packet->index);
 
 				TAILQ_INSERT_TAIL(&ctx->output.avail_buffers,

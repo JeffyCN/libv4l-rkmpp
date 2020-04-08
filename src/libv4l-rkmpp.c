@@ -375,6 +375,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 	}
 
 	if (!reqbufs->count) {
+		LOGV(1, "release buffers\n");
 		rkmpp_destroy_buffers(ctx, queue);
 		goto out;
 	}
@@ -390,7 +391,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 		goto err;
 	}
 
-	LOGV(3, "sizeimage: %d, count: %d\n", sizeimage, reqbufs->count);
+	LOGV(1, "sizeimage: %d, count: %d\n", sizeimage, reqbufs->count);
 
 	pthread_mutex_lock(&queue->queue_mutex);
 	TAILQ_INIT(&queue->avail_buffers);
@@ -426,7 +427,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 		queue->buffers[i].planes[0].length = sizeimage;
 		rkmpp_buffer_set_locked(&queue->buffers[i]);
 
-		LOGV(3, "create buffer(%d), fd: %d\n",
+		LOGV(1, "create buffer(%d), fd: %d\n",
 		     i, queue->buffers[i].fd);
 	}
 
@@ -456,7 +457,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 		queue->buffers[i].rkmpp_buf = buffer;
 		queue->buffers[i].fd = mpp_buffer_get_fd(buffer);
 
-		LOGV(3, "create external buffer(%d), fd: %d\n",
+		LOGV(1, "create external buffer(%d), fd: %d\n",
 		     i, queue->buffers[i].fd);
 	}
 

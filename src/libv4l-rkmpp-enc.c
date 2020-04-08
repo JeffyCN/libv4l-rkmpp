@@ -168,7 +168,7 @@ static MppPacket rkmpp_get_extra_info(struct rkmpp_enc_context *enc)
 
 	ENTER();
 
-	LOGV(3, "requesting extra info\n");
+	LOGV(1, "requesting extra info\n");
 
 	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_EXTRA_INFO, &packet);
 	if (ret != MPP_OK || !packet) {
@@ -187,7 +187,7 @@ static void rkmpp_send_header(struct rkmpp_enc_context *enc)
 
 	ENTER();
 
-	LOGV(3, "sending header\n");
+	LOGV(1, "sending header\n");
 
 	pthread_mutex_lock(&ctx->capture.queue_mutex);
 	rkmpp_buffer = TAILQ_FIRST(&ctx->capture.pending_buffers);
