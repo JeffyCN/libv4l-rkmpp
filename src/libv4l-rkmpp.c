@@ -185,7 +185,7 @@ int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 		++j;
 	}
 
-	LOGE("%s format(%d) not found\n",
+	LOGV(1, "%s format(%d) not found\n",
 	     compressed ? "compressed" : "raw", f->index);
 	RETURN_ERR(EINVAL, -1);
 }
@@ -675,7 +675,7 @@ static int rkmpp_parse_options(struct rkmpp_context *ctx, int fd)
 	} else if (!strncmp(options, "enc", 3)) {
 		ctx->is_decoder = false;
 	} else {
-		LOGE("unknown options\n");
+		LOGV(1, "unknown options\n");
 		RETURN_ERR(ENODEV, -1);
 	}
 
@@ -709,7 +709,7 @@ static void *plugin_init(int fd)
 	}
 
 	if (rkmpp_parse_options(ctx, fd) < 0){
-		LOGE("failed to parse option\n");
+		LOGV(1, "failed to parse option\n");
 		goto err_close_drm_fd;
 	}
 

@@ -773,7 +773,7 @@ int rkmpp_dec_ioctl(void *data, unsigned long cmd, void *arg)
 		ret = rkmpp_dec_g_ctrl(dec, arg);
 		break;
 	default:
-		LOGE("unsupported ioctl cmd: %s(%lu)!\n",
+		LOGV(1, "unsupported ioctl cmd: %s(%lu)!\n",
 		     rkmpp_cmd2str(cmd), cmd);
 		RETURN_ERR(ENOTTY, -1);
 	}

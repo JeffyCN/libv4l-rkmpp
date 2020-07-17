@@ -783,7 +783,7 @@ static int rkmpp_enc_queryctrl(struct rkmpp_enc_context *enc,
 	switch (query_ctrl->id) {
 		/* TODO: fill info for supported ctrls */
 	default:
-		LOGE("unsupported ctrl: %x\n", query_ctrl->id);
+		LOGV(1, "unsupported ctrl: %x\n", query_ctrl->id);
 		RETURN_ERR(EINVAL, -1);
 	}
 
@@ -1059,7 +1059,7 @@ int rkmpp_enc_ioctl(void *data, unsigned long cmd, void *arg)
 		ret = rkmpp_enc_s_ext_ctrls(enc, arg);
 		break;
 	default:
-		LOGE("unsupported ioctl cmd: %s(%lu)!\n",
+		LOGV(1, "unsupported ioctl cmd: %s(%lu)!\n",
 		     rkmpp_cmd2str(cmd), cmd);
 		RETURN_ERR(ENOTTY, -1);
 	}
