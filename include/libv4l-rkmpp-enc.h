@@ -37,8 +37,9 @@
  * @gop_size:		V4L2_CID_MPEG_VIDEO_GOP_SIZE.
  * @fixed_bitrate:	V4L2_CID_MPEG_MFC51_VIDEO_RC_FIXED_TARGET_BIT.
  * @bitrate:		Target bitrate.
- * @framerate:		Target framerate.
- * @keyframe_requested: Number of keyframes requested.
+ * @denominator:	Target denominator.
+ * @numerator:		Target numerator.
+ * @keyframe_requested:	Number of keyframes requested.
  * @encoder_thread:	Handler of the encoder thread.
  * @encoder_cond:	Condition variable for streaming flag.
  * @encoder_mutex:	Mutex for streaming flag and buffers.
@@ -73,7 +74,8 @@ struct rkmpp_enc_context {
 	bool fixed_bitrate;
 
 	int bitrate;
-	int framerate;
+	int denominator;
+	int numerator;
 
 	int keyframe_requested;
 

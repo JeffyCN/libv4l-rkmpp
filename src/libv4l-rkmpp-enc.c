@@ -496,7 +496,8 @@ static int rkmpp_enc_apply_rc_cfg(struct rkmpp_enc_context *enc)
 
 	bitrate = enc->bitrate;
 	if (!bitrate)
-		bitrate = enc->width * enc->height / 8 * enc->framerate;
+		bitrate = enc->width * enc->height / 8 *
+			enc->numerator / enc->denominator;
 
 	if (!enc->mb_rc) {
 		/* Constant QP does not have bps */
@@ -519,7 +520,8 @@ static int rkmpp_enc_apply_rc_cfg(struct rkmpp_enc_context *enc)
 		rc_cfg.bps_min = bitrate * 1 / 16;
 	}
 
-	rc_cfg.fps_out_num = enc->framerate;
+	rc_cfg.fps_in_num = rc_cfg.fps_out_num = enc->numerator;
+	rc_cfg.fps_in_denorm = rc_cfg.fps_out_denorm = enc->denominator;
 
 	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_RC_CFG, &rc_cfg);
 	if (ret != MPP_OK) {
@@ -755,13 +757,12 @@ static int rkmpp_enc_s_parm(struct rkmpp_enc_context *enc,
 	}
 
 	/* V4L2 provide "time per frame", but mpp needs "frames per second" */
-	enc->framerate = parms->parm.output.timeperframe.denominator /
-		parms->parm.output.timeperframe.numerator;
+	enc->denominator = parms->parm.output.timeperframe.numerator;
+	enc->numerator = parms->parm.output.timeperframe.denominator;
 
-	LOGV(3, "numerator: %d, denominator: %d, framerate: %d\n",
+	LOGV(3, "numerator: %d, denominator: %d\n",
 	     parms->parm.output.timeperframe.numerator,
-	     parms->parm.output.timeperframe.denominator,
-	     enc->framerate);
+	     parms->parm.output.timeperframe.denominator);
 
 	if (enc->mpp_streaming &&
 	    rkmpp_enc_apply_rc_cfg(enc) < 0) {
@@ -961,7 +962,8 @@ void *rkmpp_enc_init(struct rkmpp_context *ctx)
 	enc->fixed_bitrate = false;
 
 	enc->bitrate = 0;
-	enc->framerate = 30;
+	enc->denominator = 1;
+	enc->numerator = 30;
 
 	pthread_cond_init(&enc->encoder_cond, NULL);
 	pthread_mutex_init(&enc->encoder_mutex, NULL);
