@@ -25,6 +25,9 @@
 #define IVF_HEADER_BYTES	32
 #define IVF_FRAME_BYTES		12
 
+/* The MPP is using 1K for header buf. */
+#define MAX_HEADER_BYTES	(1 << 10)
+
 /**
  * struct rkmpp_enc_context - Context private data for encoder
  * @ctx:		Common context data.
@@ -32,6 +35,8 @@
  * @h264:		Enc config for H264.
  * @vp8:		Enc config for VP8.
  * @type:		Encoder format type.
+ * @needs_header:	Needs to process header.
+ * @header:		Header packet.
  * @mb_rc:		V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE.
  * @rc_reaction_coeff:	V4L2_CID_MPEG_MFC51_VIDEO_RC_REACTION_COEFF.
  * @gop_size:		V4L2_CID_MPEG_VIDEO_GOP_SIZE.
@@ -55,8 +60,6 @@ struct rkmpp_enc_context {
 		int level;
 		int max_qp;
 		bool separate_header; /* V4L2_CID_MPEG_VIDEO_HEADER_MODE */
-		bool needs_header;
-		MppPacket header;
 	} h264;
 
 	struct {
@@ -67,6 +70,9 @@ struct rkmpp_enc_context {
 		H264,
 		VP8,
 	} type;
+
+	bool needs_header;
+	MppPacket header;
 
 	bool mb_rc;
 	int rc_reaction_coeff;

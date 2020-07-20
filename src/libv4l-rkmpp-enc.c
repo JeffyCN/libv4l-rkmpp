@@ -160,24 +160,31 @@ static void rkmpp_packet_to_buffer(struct rkmpp_enc_context *enc,
 	rkmpp_buffer->bytesused += src_size;
 }
 
-static MppPacket rkmpp_get_extra_info(struct rkmpp_enc_context *enc)
+static MppPacket rkmpp_get_header(struct rkmpp_enc_context *enc)
 {
 	struct rkmpp_context *ctx = enc->ctx;
-	MppPacket packet = NULL;
+	MppPacket tmp, header;
 	MPP_RET ret;
+	uint8_t buf[MAX_HEADER_BYTES];
 
 	ENTER();
 
-	LOGV(1, "requesting extra info\n");
+	LOGV(1, "get header packet\n");
 
-	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_EXTRA_INFO, &packet);
-	if (ret != MPP_OK || !packet) {
-		LOGE("failed to get extra info\n");
-		packet = NULL;
+	mpp_packet_init(&tmp, buf, sizeof(buf));
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_HDR_SYNC, tmp);
+	if (ret != MPP_OK) {
+		LOGE("failed to get header\n");
+		mpp_packet_deinit(&tmp);
+		return NULL;
 	}
 
+	mpp_packet_copy_init(&header, tmp);
+	mpp_packet_deinit(&tmp);
+	LOGV(1, "header packet size: %ld\n", mpp_packet_get_length(header));
+
 	LEAVE();
-	return packet;
+	return header;
 }
 
 static void rkmpp_send_header(struct rkmpp_enc_context *enc)
@@ -196,7 +203,7 @@ static void rkmpp_send_header(struct rkmpp_enc_context *enc)
 	rkmpp_buffer_clr_pending(rkmpp_buffer);
 
 	rkmpp_buffer->bytesused = 0;
-	rkmpp_packet_to_buffer(enc, enc->h264.header, rkmpp_buffer);
+	rkmpp_packet_to_buffer(enc, enc->header, rkmpp_buffer);
 
 	TAILQ_INSERT_TAIL(&ctx->capture.avail_buffers,
 			  rkmpp_buffer, entry);
@@ -227,9 +234,9 @@ static void *encoder_thread_fn(void *data)
 			pthread_cond_wait(&enc->encoder_cond,
 					  &enc->encoder_mutex);
 
-		/* Store h264 header before 1st frame */
-		if (enc->h264.needs_header && !enc->h264.header)
-			enc->h264.header = rkmpp_get_extra_info(enc);
+		/* Store header before 1st frame */
+		if (enc->needs_header && !enc->header)
+			enc->header = rkmpp_get_header(enc);
 
 		/* Wait for buffers */
 		while (TAILQ_EMPTY(&ctx->capture.pending_buffers) ||
@@ -237,11 +244,12 @@ static void *encoder_thread_fn(void *data)
 			pthread_cond_wait(&enc->encoder_cond,
 					  &enc->encoder_mutex);
 
-		if (enc->h264.needs_header && enc->h264.separate_header) {
-			if (enc->h264.header) {
+		if (enc->type == H264 && enc->needs_header &&
+		    enc->h264.separate_header) {
+			if (enc->header) {
 				/* Send separate header before 1st frame */
 				rkmpp_send_header(enc);
-				enc->h264.needs_header = false;
+				enc->needs_header = false;
 			}
 			pthread_mutex_unlock(&enc->encoder_mutex);
 			goto next;
@@ -277,12 +285,11 @@ static void *encoder_thread_fn(void *data)
 
 		rkmpp_buffer->bytesused = 0;
 
-		if (enc->type == H264 && enc->h264.needs_header &&
+		if (enc->type == H264 && enc->needs_header &&
 		    !enc->h264.separate_header) {
-			/* Join the header to the 1st header */
-			rkmpp_packet_to_buffer(enc, enc->h264.header,
-					       rkmpp_buffer);
-			enc->h264.needs_header = false;
+			/* Join the header to the 1st frame */
+			rkmpp_packet_to_buffer(enc, enc->header, rkmpp_buffer);
+			enc->needs_header = false;
 		} else if (enc->type == VP8) {
 			void *pos = mpp_packet_get_pos(packet);
 			size_t len = mpp_packet_get_length(packet);
@@ -597,9 +604,12 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 			goto err_destroy_mpp;
 		}
 
-		enc->h264.needs_header = enc->type == H264;
-		enc->h264.header = NULL;
+		enc->needs_header = true;
 	}
+
+	if (enc->header)
+		mpp_packet_deinit(&enc->header);
+	enc->header = NULL;
 
 	/* Apply configs about input frames */
 	if (rkmpp_enc_apply_input_cfg(enc) < 0) {
@@ -985,6 +995,9 @@ void rkmpp_enc_deinit(void *data)
 		pthread_cancel(enc->encoder_thread);
 		pthread_join(enc->encoder_thread, NULL);
 	}
+
+	if (enc->header)
+		mpp_packet_deinit(&enc->header);
 
 	if (enc->mpp_streaming) {
 		ctx->mpi->reset(ctx->mpp);
