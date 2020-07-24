@@ -38,13 +38,9 @@ PKG_CHECK_MODULES(LIBV4L2, libv4l2 >= 1.4.1)
 AC_CHECK_HEADERS([fcntl.h inttypes.h stdint.h stdlib.h string.h unistd.h])
 
 # Checks for rockchip rga.
-AC_CHECK_HEADERS([rga/RgaApi.h],
-	AC_CHECK_LIB([rga], [c_RkRgaInit], HAVE_RGA=yes))
-if test "x$HAVE_RGA" = xyes;then
-	AC_SUBST(RGA_LIBS, "-lrga")
-else
-	AC_MSG_WARN([build without rockchip rga])
-fi
+PKG_CHECK_MODULES(RGA, [librga >= 2.0.0],
+	AC_DEFINE(HAVE_RGA, 1, [Use rockchip rga]),
+	AC_MSG_WARN([build without rockchip rga]))
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_CHECK_HEADER_STDBOOL

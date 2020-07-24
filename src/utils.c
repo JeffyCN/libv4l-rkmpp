@@ -17,7 +17,7 @@
 
 #include "libv4l-rkmpp.h"
 
-#ifdef HAVE_RGA_RGAAPI_H
+#ifdef HAVE_RGA
 #include <rga/rga.h>
 #include <rga/RgaApi.h>
 #endif
@@ -28,7 +28,7 @@ static int rkmpp_rga_copy(struct rkmpp_context *ctx,
 			  int rkmpp_fd, void *v4l2_addr,
 			  int copy_to)
 {
-#ifdef HAVE_RGA_RGAAPI_H
+#ifdef HAVE_RGA
 	RgaSURF_FORMAT rga_format;
 	rga_info_t src_info = {0};
 	rga_info_t dst_info = {0};
