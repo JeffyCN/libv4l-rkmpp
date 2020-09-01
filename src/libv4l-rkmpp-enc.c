@@ -395,32 +395,42 @@ static int rkmpp_enc_qbuf(struct rkmpp_enc_context *enc,
 static int rkmpp_enc_apply_h264_cfg(struct rkmpp_enc_context *enc)
 {
 	struct rkmpp_context *ctx = enc->ctx;
-	MppEncCodecCfg codec_cfg;
+	MppEncCfg cfg;
 	MPP_RET ret;
 
-	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_CODEC_CFG, &codec_cfg);
-	if (ret != MPP_OK) {
-		LOGE("failed to get codec config\n");
-		RETURN_ERR(EINVAL, -1);
+	if (mpp_enc_cfg_init(&cfg)) {
+		LOGE("failed to init enc config\n");
+		RETURN_ERR(ENOMEM, -1);
 	}
 
-	codec_cfg.h264.profile = enc->h264.profile;
-	codec_cfg.h264.level = enc->h264.level;
-	codec_cfg.h264.change |= MPP_ENC_H264_CFG_CHANGE_PROFILE;
-
-	codec_cfg.h264.transform8x8_mode = enc->h264.profile >= 100;
-	codec_cfg.h264.change |= MPP_ENC_H264_CFG_CHANGE_TRANS_8x8;
-
-	codec_cfg.h264.qp_max = enc->h264.max_qp;
-	codec_cfg.h264.change |= MPP_ENC_H264_CFG_CHANGE_QP_LIMIT;
-
-	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_CODEC_CFG, &codec_cfg);
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_CFG, cfg);
 	if (ret != MPP_OK) {
-		LOGE("failed to set codec config: %d\n", ret);
-		RETURN_ERR(EINVAL, -1);
+		LOGE("failed to get enc config\n");
+		goto err;
 	}
 
+	mpp_enc_cfg_set_s32(cfg, "h264:profile", enc->h264.profile);
+	mpp_enc_cfg_set_s32(cfg, "h264:level", enc->h264.level);
+
+	mpp_enc_cfg_set_s32(cfg, "h264:trans8x8",
+			    enc->h264.profile == MPP_H264_PROFILE_HIGH);
+	mpp_enc_cfg_set_s32(cfg, "h264:cabac_en",
+			    enc->h264.profile != MPP_H264_PROFILE_BASELINE);
+	mpp_enc_cfg_set_s32(cfg, "h264:cabac_idc", 0);
+
+	mpp_enc_cfg_set_s32(cfg, "h264:qp_max", enc->h264.max_qp);
+
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_CFG, cfg);
+	if (ret != MPP_OK) {
+		LOGE("failed to set enc config: %d\n", ret);
+		goto err;
+	}
+
+	mpp_enc_cfg_deinit(cfg);
 	return 0;
+err:
+	mpp_enc_cfg_deinit(cfg);
+	RETURN_ERR(EINVAL, -1);
 }
 
 static int rkmpp_enc_apply_input_cfg(struct rkmpp_enc_context *enc)
@@ -428,17 +438,19 @@ static int rkmpp_enc_apply_input_cfg(struct rkmpp_enc_context *enc)
 	struct rkmpp_context *ctx = enc->ctx;
 	struct v4l2_pix_format_mplane *fmt = &ctx->output.format;
 	const struct rkmpp_fmt *rkmpp_fmt = ctx->output.rkmpp_format;
-	MppEncPrepCfg prep_cfg;
+	MppEncCfg cfg;
 	MPP_RET ret;
 
-	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_PREP_CFG, &prep_cfg);
-	if (ret != MPP_OK) {
-		LOGE("failed to get prep config\n");
-		RETURN_ERR(EINVAL, -1);
+	if (mpp_enc_cfg_init(&cfg)) {
+		LOGE("failed to init enc config\n");
+		RETURN_ERR(ENOMEM, -1);
 	}
 
-	prep_cfg.format = rkmpp_fmt->format;
-	prep_cfg.change |= MPP_ENC_PREP_CFG_CHANGE_FORMAT;
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_CFG, cfg);
+	if (ret != MPP_OK) {
+		LOGE("failed to get enc config\n");
+		goto err;
+	}
 
 	enc->width = enc->crop.width ? enc->crop.width : fmt->width;
 	enc->height = enc->crop.height ? enc->crop.height : fmt->height;
@@ -446,97 +458,110 @@ static int rkmpp_enc_apply_input_cfg(struct rkmpp_enc_context *enc)
 	enc->vstride = fmt->plane_fmt[0].sizeimage /
 		fmt->plane_fmt[0].bytesperline;
 
-	prep_cfg.width = enc->width;
-	prep_cfg.height = enc->height;
-	prep_cfg.hor_stride = enc->hstride;
-	prep_cfg.ver_stride = enc->vstride;
-	prep_cfg.change |= MPP_ENC_PREP_CFG_CHANGE_INPUT;
+	mpp_enc_cfg_set_s32(cfg, "prep:format", rkmpp_fmt->format);
+	mpp_enc_cfg_set_s32(cfg, "prep:width", enc->width);
+	mpp_enc_cfg_set_s32(cfg, "prep:height", enc->height);
+	mpp_enc_cfg_set_s32(cfg, "prep:hor_stride", enc->hstride);
+	mpp_enc_cfg_set_s32(cfg, "prep:ver_stride", enc->vstride);
 
 	LOGV(1, "apply input size: %dx%d(%dx%d)\n",
-	     prep_cfg.width, prep_cfg.height,
-	     prep_cfg.hor_stride, prep_cfg.ver_stride);
+	     enc->width, enc->height, enc->hstride, enc->vstride);
 
-	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_PREP_CFG, &prep_cfg);
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_CFG, cfg);
 	if (ret != MPP_OK) {
-		LOGE("failed to set prep config\n");
-		RETURN_ERR(EINVAL, -1);
+		LOGE("failed to set enc config: %d\n", ret);
+		goto err;
 	}
 
+	mpp_enc_cfg_deinit(cfg);
 	return 0;
+err:
+	mpp_enc_cfg_deinit(cfg);
+	RETURN_ERR(EINVAL, -1);
 }
 
 static int rkmpp_enc_apply_rc_cfg(struct rkmpp_enc_context *enc)
 {
 	struct rkmpp_context *ctx = enc->ctx;
-	MppEncRcCfg rc_cfg;
+	MppEncCfg cfg;
+	MppEncRcMode rc_mode;
 	MPP_RET ret;
 	int bitrate;
 
-	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_RC_CFG, &rc_cfg);
-	if (ret != MPP_OK) {
-		LOGE("failed to get rc config\n");
-		RETURN_ERR(EINVAL, -1);
+	if (mpp_enc_cfg_init(&cfg)) {
+		LOGE("failed to init enc config\n");
+		RETURN_ERR(ENOMEM, -1);
 	}
 
-	rc_cfg.change = MPP_ENC_RC_CFG_CHANGE_ALL;
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_CFG, cfg);
+	if (ret != MPP_OK) {
+		LOGE("failed to get enc config\n");
+		goto err;
+	}
 
 	if (enc->mb_rc) {
 		if (enc->rc_reaction_coeff < 10)
 			/* The "tight" bitrate mode */
-			rc_cfg.rc_mode = MPP_ENC_RC_MODE_CBR;
+			rc_mode = MPP_ENC_RC_MODE_CBR;
 		else
-			rc_cfg.rc_mode = MPP_ENC_RC_MODE_VBR;
-
-		rc_cfg.quality = MPP_ENC_RC_QUALITY_MEDIUM;
+			rc_mode = MPP_ENC_RC_MODE_VBR;
 	} else {
 		/* Disable macroblock-level bitrate control */
-		rc_cfg.rc_mode = MPP_ENC_RC_MODE_VBR;
-		rc_cfg.quality = MPP_ENC_RC_QUALITY_CQP;
+		rc_mode = MPP_ENC_RC_MODE_FIXQP;
 	}
 
-	/* Use gop(1) for keyframe requests */
-	rc_cfg.gop = !enc->keyframe_requested ? enc->gop_size : 1;
+	mpp_enc_cfg_set_s32(cfg, "rc:mode", rc_mode);
 
-	/* TODO: Remove this when mpp crash issue fixed */
-	if (!rc_cfg.gop)
-		rc_cfg.gop = 1024;
+	mpp_enc_cfg_set_u32(cfg, "rc:max_reenc_times", 1);
+
+	mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", 0);
+	mpp_enc_cfg_set_s32(cfg, "rc:fps_in_num", enc->numerator);
+	mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denorm", enc->denominator);
+	mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", 0);
+	mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", enc->numerator);
+	mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", enc->denominator);
+
+	/* Use gop(1) for keyframe requests */
+	mpp_enc_cfg_set_s32(cfg, "rc:gop",
+			    !enc->keyframe_requested ? enc->gop_size : 1);
 
 	bitrate = enc->bitrate;
 	if (!bitrate)
 		bitrate = enc->width * enc->height / 8 *
 			enc->numerator / enc->denominator;
 
-	if (!enc->mb_rc) {
-		/* Constant QP does not have bps */
-		rc_cfg.bps_target = -1;
-		rc_cfg.bps_max = -1;
-		rc_cfg.bps_min = -1;
-	} else if (enc->fixed_bitrate) {
-		rc_cfg.bps_target = bitrate;
-		rc_cfg.bps_max = bitrate;
-		rc_cfg.bps_min = bitrate;
-	} else if (rc_cfg.rc_mode == MPP_ENC_RC_MODE_CBR) {
+	if (enc->fixed_bitrate) {
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_target", bitrate);
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_max", bitrate);
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_min", bitrate);
+	} else if (rc_mode == MPP_ENC_RC_MODE_FIXQP) {
+		/* BPS settings are ignored in FIXQP mode */
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_target", -1);
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_max", -1);
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_min", -1);
+	} else if (rc_mode == MPP_ENC_RC_MODE_CBR) {
 		/* Constant bitrate has very small bps range of 1/16 bps */
-		rc_cfg.bps_target = bitrate;
-		rc_cfg.bps_max = bitrate * 17 / 16;
-		rc_cfg.bps_min = bitrate * 15 / 16;
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_target", bitrate);
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_max", bitrate * 17 / 16);
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_min", bitrate * 15 / 16);
 	} else {
 		/* Variable bitrate has large bps range */
-		rc_cfg.bps_target = bitrate;
-		rc_cfg.bps_max = bitrate * 17 / 16;
-		rc_cfg.bps_min = bitrate * 1 / 16;
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_target", bitrate);
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_max", bitrate * 17 / 16);
+		mpp_enc_cfg_set_s32(cfg, "rc:bps_min", bitrate * 1 / 16);
 	}
 
-	rc_cfg.fps_in_num = rc_cfg.fps_out_num = enc->numerator;
-	rc_cfg.fps_in_denorm = rc_cfg.fps_out_denorm = enc->denominator;
-
-	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_RC_CFG, &rc_cfg);
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_CFG, cfg);
 	if (ret != MPP_OK) {
-		LOGE("failed to set rc config\n");
-		RETURN_ERR(EINVAL, -1);
+		LOGE("failed to set enc config: %d\n", ret);
+		goto err;
 	}
 
+	mpp_enc_cfg_deinit(cfg);
 	return 0;
+err:
+	mpp_enc_cfg_deinit(cfg);
+	RETURN_ERR(EINVAL, -1);
 }
 
 static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
@@ -862,6 +887,13 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			}
 			break;
 		case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
+			if (ctrl->value != MPP_H264_PROFILE_BASELINE &&
+			    ctrl->value != MPP_H264_PROFILE_MAIN &&
+			    ctrl->value != MPP_H264_PROFILE_HIGH) {
+				LOGE("only support baseline|main|high\n");
+				RETURN_ERR(EINVAL, -1);
+			}
+
 			enc->h264.profile = ctrl->value;
 			LOGV(3, "h264 profile: %d\n", enc->h264.profile);
 
@@ -960,10 +992,9 @@ void *rkmpp_enc_init(struct rkmpp_context *ctx)
 	ctx->num_formats = ARRAY_SIZE(rkmpp_enc_fmts);
 	enc->ctx = ctx;
 
-	/* High profile / 1080p@30fps */
-	enc->h264.profile = 100;
-	enc->h264.level = 40;
-	enc->h264.max_qp = 48;
+	enc->h264.profile = MPP_H264_PROFILE_HIGH;
+	enc->h264.level = 40; /* 1080p@30fps */
+	enc->h264.max_qp = 28;
 	enc->h264.separate_header = true;
 
 	enc->mb_rc = true;
