@@ -639,6 +639,29 @@ static int rkmpp_dec_g_ctrl(struct rkmpp_dec_context *dec,
 	return 0;
 }
 
+static int rkmpp_dec_g_ext_ctrls(struct rkmpp_dec_context *dec,
+				 struct v4l2_ext_controls *ext_ctrls)
+{
+	struct rkmpp_context *ctx = dec->ctx;
+	struct v4l2_control ctrl;
+	int i;
+
+	ENTER();
+
+	for (i = 0; i < ext_ctrls->count; i++) {
+		struct v4l2_ext_control *ext_ctrl = &ext_ctrls->controls[i];
+
+		ctrl.id = ext_ctrl->id;
+		if (rkmpp_dec_g_ctrl(dec, &ctrl) < 0)
+			return -1;
+
+		ext_ctrl->value = ctrl.value;
+	}
+
+	LEAVE();
+	return 0;
+}
+
 bool rkmpp_dec_has_event(void *data)
 {
 	struct rkmpp_dec_context *dec = data;
@@ -771,6 +794,9 @@ int rkmpp_dec_ioctl(void *data, unsigned long cmd, void *arg)
 		break;
 	case VIDIOC_G_CTRL:
 		ret = rkmpp_dec_g_ctrl(dec, arg);
+		break;
+	case VIDIOC_G_EXT_CTRLS:
+		ret = rkmpp_dec_g_ext_ctrls(dec, arg);
 		break;
 	default:
 		LOGV(1, "unsupported ioctl cmd: %s(%lu)!\n",
