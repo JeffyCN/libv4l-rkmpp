@@ -78,7 +78,8 @@ void rkmpp_new_frame(struct rkmpp_context *ctx)
 	fps = 1000.0f * FPS_UPDATE_INTERVAL / (curr_time - ctx->last_fps_time);
 	ctx->last_fps_time = curr_time;
 
-	LOG("FPS: %6.1f || Frames: %" PRIu64 "\n", fps, ctx->frames);
+	LOG("%s FPS: %6.1f || Frames: %" PRIu64 "\n",
+	    ctx->is_decoder ? "DEC" : "ENC", fps, ctx->frames);
 }
 
 static void rkmpp_destroy_buffers(struct rkmpp_context *ctx,
