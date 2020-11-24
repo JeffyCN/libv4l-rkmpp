@@ -16,7 +16,7 @@
 
 #include "libv4l-rkmpp-dec.h"
 
-#define RKMPP_DEC_POLL_TIMEOUT_MS	1
+#define RKMPP_DEC_POLL_TIMEOUT_MS	500
 
 static const struct rkmpp_fmt rkmpp_dec_fmts[] = {
 	{
@@ -765,6 +765,12 @@ int rkmpp_dec_ioctl(void *data, unsigned long cmd, void *arg)
 		break;
 	case VIDIOC_QBUF:
 		ret = rkmpp_qbuf(ctx, arg);
+
+		/* Feed available packets and frames to mpp */
+		if (dec->mpp_streaming) {
+			rkmpp_put_packets(dec);
+			rkmpp_put_frames(dec);
+		}
 		break;
 	case VIDIOC_DQBUF:
 		ret = rkmpp_dqbuf(ctx, arg);
