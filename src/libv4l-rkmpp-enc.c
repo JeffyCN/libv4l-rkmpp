@@ -290,26 +290,6 @@ static void *encoder_thread_fn(void *data)
 			/* Join the header to the 1st frame */
 			rkmpp_packet_to_buffer(enc, enc->header, rkmpp_buffer);
 			enc->needs_header = false;
-		} else if (enc->type == VP8) {
-			void *pos = mpp_packet_get_pos(packet);
-			size_t len = mpp_packet_get_length(packet);
-
-			if (!strncmp(pos, IVF_HEADER_MAGIC, 4)) {
-				enc->vp8.is_ivf = true;
-
-				/* Remove the ivf header */
-				pos += IVF_HEADER_BYTES;
-				len -= IVF_HEADER_BYTES;
-			}
-
-			if (enc->vp8.is_ivf) {
-				/* Remove the ivf frame header */
-				pos += IVF_FRAME_BYTES;
-				len -= IVF_FRAME_BYTES;
-			}
-
-			mpp_packet_set_pos(packet, pos);
-			mpp_packet_set_length(packet, len);
 		}
 
 		rkmpp_packet_to_buffer(enc, packet, rkmpp_buffer);
@@ -419,6 +399,42 @@ static int rkmpp_enc_apply_h264_cfg(struct rkmpp_enc_context *enc)
 	mpp_enc_cfg_set_s32(cfg, "h264:cabac_idc", 0);
 
 	mpp_enc_cfg_set_s32(cfg, "h264:qp_max", enc->h264.max_qp);
+
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_CFG, cfg);
+	if (ret != MPP_OK) {
+		LOGE("failed to set enc config: %d\n", ret);
+		goto err;
+	}
+
+	mpp_enc_cfg_deinit(cfg);
+	return 0;
+err:
+	mpp_enc_cfg_deinit(cfg);
+	RETURN_ERR(EINVAL, -1);
+}
+
+static int rkmpp_enc_apply_vp8_cfg(struct rkmpp_enc_context *enc)
+{
+	struct rkmpp_context *ctx = enc->ctx;
+	MppEncCfg cfg;
+	MPP_RET ret;
+
+	if (mpp_enc_cfg_init(&cfg)) {
+		LOGE("failed to init enc config\n");
+		RETURN_ERR(ENOMEM, -1);
+	}
+
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_CFG, cfg);
+	if (ret != MPP_OK) {
+		LOGE("failed to get enc config\n");
+		goto err;
+	}
+
+	mpp_enc_cfg_set_s32(cfg, "vp8:qp_init", 40);
+	mpp_enc_cfg_set_s32(cfg, "vp8:qp_max", 127);
+	mpp_enc_cfg_set_s32(cfg, "vp8:qp_min", 0);
+
+	mpp_enc_cfg_set_s32(cfg, "vp8:disable_ivf", 1);
 
 	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_CFG, cfg);
 	if (ret != MPP_OK) {
@@ -630,6 +646,12 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 		}
 
 		enc->needs_header = true;
+	} else if (enc->type == VP8) {
+		/* Apply vp8's special configs */
+		if (rkmpp_enc_apply_vp8_cfg(enc) < 0) {
+			LOGE("failed to apply vp8 cfg\n");
+			goto err_destroy_mpp;
+		}
 	}
 
 	if (enc->header)

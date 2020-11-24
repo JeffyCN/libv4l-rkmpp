@@ -25,10 +25,6 @@
 #define MPP_H264_PROFILE_MAIN		77
 #define MPP_H264_PROFILE_HIGH		100
 
-#define IVF_HEADER_MAGIC	"DKIF"
-#define IVF_HEADER_BYTES	32
-#define IVF_FRAME_BYTES		12
-
 /* The MPP is using 1K for header buf. */
 #define MAX_HEADER_BYTES	(1 << 10)
 
