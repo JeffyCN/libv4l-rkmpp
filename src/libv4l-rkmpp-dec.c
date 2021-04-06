@@ -618,18 +618,20 @@ static int rkmpp_dec_g_ctrl(struct rkmpp_dec_context *dec,
 		RETURN_ERR(EBUSY, -1);
 	}
 
-	/*
-	 * From mpp comment:
-	 * For H.264/H.265 20+ buffers will be enough.
-	 * For other codec 10 buffers will be enough.
-	 */
+	/* Information provided by Herman Chen <herman.chen@rock-chips.com> */
 	switch (ctx->output.rkmpp_format->fourcc) {
 	case V4L2_PIX_FMT_H264:
-		ctrl->value = 21;
+		ctrl->value = 20;
+		break;
+	case V4L2_PIX_FMT_VP9:
+		ctrl->value = 12;
+		break;
+	case V4L2_PIX_FMT_VP8:
+		ctrl->value = 8;
 		break;
 	default:
-		ctrl->value = 10;
-		break;
+		LOGE("unsupported format\n");
+		RETURN_ERR(EINVAL, -1);
 	}
 
 	/* The chromium would try to require at least 5 extra buffers */
