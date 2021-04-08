@@ -1,13 +1,13 @@
 # libv4l-rkmpp
 
-A V4L2 plugin that wraps [rockchip-mpp](http://opensource.rock-chips.com/wiki_Mpp) for the chromium's V4L2 VDA/VEA.
+A V4L2 plugin that wraps [rockchip-mpp](http://opensource.rock-chips.com/wiki_Mpp) for the chromium's V4L2 VDA/VEA (requires custom patches to enable those features).
 
 The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 
 ## Dependencies
 
 * [v4l-utils](https://git.linuxtv.org/v4l-utils.git) - with this patch:  
-  [0001-libv4l2-Support-mmap-to-libv4l-plugin.patch](https://github.com/JeffyCN/meta-rockchip/blob/release-1.1.0_20191030/recipes-multimedia/v4l2apps/v4l-utils/0001-libv4l2-Support-mmap-to-libv4l-plugin.patch)
+  [0001-libv4l2-Support-mmap-to-libv4l-plugin.patch](https://github.com/JeffyCN/meta-rockchip/blob/release-1.3.0_20200915/recipes-multimedia/v4l2apps/v4l-utils/0001-libv4l2-Support-mmap-to-libv4l-plugin.patch)
 * [rockchip-mpp](https://github.com/rockchip-linux/mpp)
 * [linux-rga](https://github.com/rockchip-linux/linux-rga)
 
@@ -36,10 +36,10 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 
 4. Run with chromium browser:  
 ```
-   This plugin is tested with [this chromium browser](https://github.com/JeffyCN/meta-rockchip/tree/master/dynamic-layers/recipes-browser/chromium) on rk3399```
    export XDG_RUNTIME_DIR=/run/user/0
    chromium --no-sandbox --gpu-sandbox-start-early --ignore-gpu-blacklist
 ```
+   This plugin is tested with [custom chromium](https://github.com/JeffyCN/meta-rockchip/tree/release-1.3.0_20200915/dynamic-layers/recipes-browser/chromium) on rk3399
 
 ## Limitation
 
@@ -51,9 +51,9 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 
 1. MPP reports errors?  
 
-   Try the newest [MPP](https://github.com/rockchip-linux/mpp) with release and develop branches.  
+   Try the newest [MPP](https://github.com/rockchip-linux/mpp) release branch or develop branch or the commit with the closest commit date.  
 
-   Also try the [mpi_dec_test](https://github.com/rockchip-linux/mpp/blob/release/test/mpi_dec_test.c) to check if the MPP works:
+   Also test with the [mpi_dec_test](https://github.com/rockchip-linux/mpp/blob/release/test/mpi_dec_test.c) to check if the MPP works:
 ```
 # mpi_dec_test -t 7 -i test-25fps.h264
 ```  
