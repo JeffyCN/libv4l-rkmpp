@@ -21,6 +21,10 @@
 #define V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME	(V4L2_CID_MPEG_BASE+229)
 #endif
 
+#ifndef V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR
+#define V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR (V4L2_CID_MPEG_BASE + 644)
+#endif
+
 #define RKMPP_ENC_POLL_TIMEOUT_MS	100
 
 static const struct rkmpp_fmt rkmpp_enc_fmts[] = {
@@ -573,6 +577,13 @@ static int rkmpp_enc_apply_rc_cfg(struct rkmpp_enc_context *enc)
 		goto err;
 	}
 
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_HEADER_MODE,
+				&enc->header_mode);
+	if (ret != MPP_OK) {
+		LOGE("failed to set header mode: %d\n", ret);
+		goto err;
+	}
+
 	mpp_enc_cfg_deinit(cfg);
 	return 0;
 err:
@@ -839,7 +850,9 @@ static int rkmpp_enc_queryctrl(struct rkmpp_enc_context *enc,
 	ENTER();
 
 	switch (query_ctrl->id) {
-		/* TODO: fill info for supported ctrls */
+	case V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR:
+		break;
+	/* TODO: fill info for other supported ctrls */
 	default:
 		LOGV(1, "unsupported ctrl: %x\n", query_ctrl->id);
 		RETURN_ERR(EINVAL, -1);
@@ -865,6 +878,20 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 		ctrl = &ext_ctrls->controls[i];
 
 		switch (ctrl->id) {
+		case V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR:
+			if (ctrl->value)
+				enc->header_mode = MPP_ENC_HEADER_MODE_EACH_IDR;
+			else
+				enc->header_mode = MPP_ENC_HEADER_MODE_DEFAULT;
+
+			LOGV(3, "header mode: %d\n", ctrl->value);
+
+			if (enc->mpp_streaming &&
+			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
+				LOGE("failed to apply header mode\n");
+				RETURN_ERR(errno, -1);
+			}
+			break;
 		case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:
 			enc->keyframe_requested++;
 			LOGV(3, "request keyframes: %d\n",

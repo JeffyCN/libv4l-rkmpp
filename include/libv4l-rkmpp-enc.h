@@ -73,6 +73,7 @@ struct rkmpp_enc_context {
 
 	bool needs_header;
 	MppPacket header;
+	MppEncHeaderMode header_mode;
 
 	bool mb_rc;
 	int rc_reaction_coeff;
