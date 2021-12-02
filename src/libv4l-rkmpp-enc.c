@@ -402,7 +402,8 @@ static int rkmpp_enc_apply_h264_cfg(struct rkmpp_enc_context *enc)
 			    enc->h264.profile != MPP_H264_PROFILE_BASELINE);
 	mpp_enc_cfg_set_s32(cfg, "h264:cabac_idc", 0);
 
-	mpp_enc_cfg_set_s32(cfg, "h264:qp_max", enc->h264.max_qp);
+	mpp_enc_cfg_set_s32(cfg, "h264:qp_max", enc->max_qp ?: 28);
+	mpp_enc_cfg_set_s32(cfg, "h264:qp_min", enc->min_qp ?: 4);
 
 	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_CFG, cfg);
 	if (ret != MPP_OK) {
@@ -435,8 +436,8 @@ static int rkmpp_enc_apply_vp8_cfg(struct rkmpp_enc_context *enc)
 	}
 
 	mpp_enc_cfg_set_s32(cfg, "vp8:qp_init", 40);
-	mpp_enc_cfg_set_s32(cfg, "vp8:qp_max", 127);
-	mpp_enc_cfg_set_s32(cfg, "vp8:qp_min", 0);
+	mpp_enc_cfg_set_s32(cfg, "vp8:qp_max", enc->max_qp ?: 127);
+	mpp_enc_cfg_set_s32(cfg, "vp8:qp_min", enc->min_qp);
 
 	mpp_enc_cfg_set_s32(cfg, "vp8:disable_ivf", 1);
 
@@ -926,12 +927,22 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			}
 			break;
 		case V4L2_CID_MPEG_VIDEO_H264_MAX_QP:
-			enc->h264.max_qp = ctrl->value;
-			LOGV(3, "h264 max qp: %d\n", enc->h264.max_qp);
+			enc->max_qp = ctrl->value;
+			LOGV(3, "h264 max qp: %d\n", enc->max_qp);
 
 			if (enc->mpp_streaming &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
 				LOGE("failed to apply h264 max qp\n");
+				RETURN_ERR(errno, -1);
+			}
+			break;
+		case V4L2_CID_MPEG_VIDEO_H264_MIN_QP:
+			enc->min_qp = ctrl->value;
+			LOGV(3, "h264 min qp: %d\n", enc->min_qp);
+
+			if (enc->mpp_streaming &&
+			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
+				LOGE("failed to apply h264 min qp\n");
 				RETURN_ERR(errno, -1);
 			}
 			break;
@@ -969,6 +980,26 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 				enc->h264.separate_header = false;
 
 			LOGV(3, "h264 separate header: %d\n", enc->h264.separate_header);
+			break;
+		case V4L2_CID_MPEG_VIDEO_VPX_MAX_QP:
+			enc->max_qp = ctrl->value;
+			LOGV(3, "vpx max qp: %d\n", enc->max_qp);
+
+			if (enc->mpp_streaming &&
+			    rkmpp_enc_apply_vp8_cfg(enc) < 0) {
+				LOGE("failed to apply vpx max qp\n");
+				RETURN_ERR(errno, -1);
+			}
+			break;
+		case V4L2_CID_MPEG_VIDEO_VPX_MIN_QP:
+			enc->min_qp = ctrl->value;
+			LOGV(3, "vpx min qp: %d\n", enc->min_qp);
+
+			if (enc->mpp_streaming &&
+			    rkmpp_enc_apply_vp8_cfg(enc) < 0) {
+				LOGE("failed to apply vpx min qp\n");
+				RETURN_ERR(errno, -1);
+			}
 			break;
 		case V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE:
 			enc->mb_rc = !!ctrl->value;
@@ -1043,8 +1074,9 @@ void *rkmpp_enc_init(struct rkmpp_context *ctx)
 
 	enc->h264.profile = MPP_H264_PROFILE_HIGH;
 	enc->h264.level = 40; /* 1080p@30fps */
-	enc->h264.max_qp = 28;
 	enc->h264.separate_header = true;
+
+	enc->max_qp = enc->min_qp = 0;
 
 	enc->mb_rc = true;
 	enc->rc_reaction_coeff = 1;

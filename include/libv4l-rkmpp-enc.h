@@ -58,7 +58,6 @@ struct rkmpp_enc_context {
 	struct {
 		int profile;
 		int level;
-		int max_qp;
 		bool separate_header; /* V4L2_CID_MPEG_VIDEO_HEADER_MODE */
 	} h264;
 
@@ -70,6 +69,9 @@ struct rkmpp_enc_context {
 		H264,
 		VP8,
 	} type;
+
+	int max_qp;
+	int min_qp;
 
 	bool needs_header;
 	MppPacket header;
