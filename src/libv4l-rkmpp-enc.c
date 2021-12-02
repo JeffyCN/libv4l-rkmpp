@@ -863,6 +863,20 @@ static int rkmpp_enc_queryctrl(struct rkmpp_enc_context *enc,
 	return 0;
 }
 
+static int rkmpp_enc_h264_convert_profile(int profile)
+{
+	switch (profile) {
+	case V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE:
+		return MPP_H264_PROFILE_BASELINE;
+	case V4L2_MPEG_VIDEO_H264_PROFILE_MAIN:
+		return MPP_H264_PROFILE_MAIN;
+	case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH:
+		return MPP_H264_PROFILE_HIGH;
+	default:
+		return -1;
+	}
+}
+
 static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 				 struct v4l2_ext_controls *ext_ctrls)
 {
@@ -964,14 +978,14 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			}
 			break;
 		case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
-			if (ctrl->value != MPP_H264_PROFILE_BASELINE &&
-			    ctrl->value != MPP_H264_PROFILE_MAIN &&
-			    ctrl->value != MPP_H264_PROFILE_HIGH) {
+			enc->h264.profile =
+				rkmpp_enc_h264_convert_profile(ctrl->value);
+			if (enc->h264.profile < 0) {
+				enc->h264.profile = MPP_H264_PROFILE_HIGH;
 				LOGE("only support baseline|main|high\n");
 				RETURN_ERR(EINVAL, -1);
 			}
 
-			enc->h264.profile = ctrl->value;
 			LOGV(3, "h264 profile: %d\n", enc->h264.profile);
 
 			if (enc->mpp_streaming &&
