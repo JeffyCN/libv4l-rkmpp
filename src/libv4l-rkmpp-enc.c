@@ -879,6 +879,23 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 		ctrl = &ext_ctrls->controls[i];
 
 		switch (ctrl->id) {
+		case V4L2_CID_MPEG_VIDEO_H264_I_PERIOD:
+			if (ctrl->value) {
+				LOGE("not supporting I-period\n");
+				RETURN_ERR(EINVAL, -1);
+			}
+			break;
+		case V4L2_CID_MPEG_VIDEO_H264_LOOP_FILTER_MODE:
+			if (ctrl->value !=
+			    V4L2_MPEG_VIDEO_H264_LOOP_FILTER_MODE_ENABLED) {
+				LOGE("not supporting disabling loop filter\n");
+				RETURN_ERR(EINVAL, -1);
+			}
+			break;
+		case V4L2_CID_MPEG_VIDEO_H264_ENTROPY_MODE:
+		case V4L2_CID_MPEG_VIDEO_H264_8X8_TRANSFORM:
+			/* Automatically configured */
+			break;
 		case V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR:
 			if (ctrl->value)
 				enc->header_mode = MPP_ENC_HEADER_MODE_EACH_IDR;
