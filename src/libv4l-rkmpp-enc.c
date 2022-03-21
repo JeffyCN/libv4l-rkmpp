@@ -795,16 +795,6 @@ static int rkmpp_enc_s_selection(struct rkmpp_enc_context *enc,
 		rect->top = rect->left = 0;
 	}
 
-	/* We can crop only inside right- or bottom-most macroblocks. */
-	if (round_up(rect->width, RKMPP_MB_DIM) != fmt->width
-	    || round_up(rect->height, RKMPP_MB_DIM) != fmt->height) {
-		rect->width = fmt->width;
-		rect->height = fmt->height;
-	}
-
-	/* We support widths aligned to 4 pixels and arbitrary heights. */
-	rect->width = round_up(rect->width, 4);
-
 	enc->crop = *rect;
 
 	LOGV(1, "crop rect: %dx%d\n", enc->crop.width, enc->crop.height);
