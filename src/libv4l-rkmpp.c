@@ -703,22 +703,16 @@ static void *plugin_init(int fd)
 	if (!ctx)
 		RETURN_ERR(ENOMEM, NULL);
 
-	ctx->drm_fd = open("/dev/dri/card0", O_RDWR);
-	if (ctx->drm_fd < 0) {
-		LOGE("failed to open drm device\n");
-		goto err_free_ctx;
-	}
-
 	if (rkmpp_parse_options(ctx, fd) < 0){
 		LOGV(1, "failed to parse option\n");
-		goto err_close_drm_fd;
+		goto err_free_ctx;
 	}
 
 	/* Create eventfd to fake poll events */
 	ctx->eventfd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 	if (ctx->eventfd < 0) {
 		LOGE("failed to create eventfd\n");
-		goto err_close_drm_fd;
+		goto err_free_ctx;
 	}
 
 	epollfd = epoll_create(1);
@@ -783,8 +777,6 @@ err_close_epollfd:
 	close(epollfd);
 err_close_eventfd:
 	close(ctx->eventfd);
-err_close_drm_fd:
-	close(ctx->drm_fd);
 err_free_ctx:
 	free(ctx);
 	RETURN_ERR(errno, NULL);
@@ -820,7 +812,6 @@ static void plugin_close(void *dev_ops_priv)
 		mpp_buffer_group_put(ctx->capture.internal_group);
 
 	close(ctx->eventfd);
-	close(ctx->drm_fd);
 	free(ctx);
 
 	LEAVE();
@@ -860,6 +851,7 @@ static void *plugin_mmap(void *dev_ops_priv, void *start,
 	(void)fd; /* unused */
 
 	struct rkmpp_context *ctx = dev_ops_priv;
+	struct rkmpp_buffer *rkmpp_buffer;
 	struct rkmpp_buf_queue *queue;
 	void *ptr;
 	int index;
@@ -891,11 +883,10 @@ static void *plugin_mmap(void *dev_ops_priv, void *start,
 		RETURN_ERR(EINVAL, NULL);
 	}
 
-	ptr = mmap(start, length, prot, flags, ctx->drm_fd,
-		   queue->buffers[index].mem_offset);
+	rkmpp_buffer = &queue->buffers[index];
+	ptr = mmap(start, length, prot, flags, rkmpp_buffer->fd, 0);
 
-	LOGV(1, "mmap buffer(%d): %p, fd: %d\n", index, ptr,
-	     queue->buffers[index].fd);
+	LOGV(1, "mmap buffer(%d): %p, fd: %d\n", index, ptr, rkmpp_buffer->fd);
 
 	LEAVE();
 	return ptr;

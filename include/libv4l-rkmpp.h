@@ -167,7 +167,6 @@ struct rkmpp_buffer {
 	uint32_t length;
 	uint32_t flags;
 	uint32_t size;
-	uint64_t mem_offset;
 
 	struct {
 		unsigned long userptr;
@@ -238,7 +237,6 @@ struct rkmpp_context {
 	bool is_decoder;
 	bool nonblock;
 	int eventfd;
-	int drm_fd;
 
 	MppCtx mpp;
 	MppApi *mpi;

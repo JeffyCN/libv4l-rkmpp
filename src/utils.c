@@ -223,7 +223,6 @@ int rkmpp_to_v4l2_buffer(struct rkmpp_context *ctx,
 			 struct rkmpp_buffer *rkmpp_buffer,
 			 struct v4l2_buffer *buffer)
 {
-	struct drm_mode_map_dumb args = {0};
 	int i, ret;
 
 	ENTER();
@@ -233,22 +232,6 @@ int rkmpp_to_v4l2_buffer(struct rkmpp_context *ctx,
 		     buffer->length, rkmpp_buffer->length);
 		return -1;
 	}
-
-	ret = drmPrimeFDToHandle(ctx->drm_fd, rkmpp_buffer->fd, &args.handle);
-	if (ret < 0) {
-		LOGE("failed to get drm handle from fd: %d)\n",
-		     rkmpp_buffer->fd);
-		return ret;
-	}
-
-	ret = drmIoctl(ctx->drm_fd, DRM_IOCTL_MODE_MAP_DUMB, &args);
-	if (ret < 0) {
-		LOGE("failed to map drm dumb from fd: %d)\n",
-		     rkmpp_buffer->fd);
-		return ret;
-	}
-
-	rkmpp_buffer->mem_offset = args.offset;
 
 	for (i = 0; i < buffer->length; i++) {
 		buffer->m.planes[i].length = rkmpp_buffer->planes[i].length;
