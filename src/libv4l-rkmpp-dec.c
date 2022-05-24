@@ -444,6 +444,9 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 		goto err;
 	}
 
+	ret = 1;
+	ctx->mpi->control(ctx->mpp, MPP_DEC_SET_PARSER_FAST_MODE, &ret);
+
 	ret = mpp_init(ctx->mpp, MPP_CTX_DEC,
 		       ctx->output.rkmpp_format->type);
 	if (ret != MPP_OK) {
