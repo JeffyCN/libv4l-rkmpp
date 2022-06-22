@@ -16,6 +16,7 @@
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <linux/version.h>
 
 #include "libv4l-plugin.h"
@@ -691,10 +692,15 @@ static void *plugin_init(int fd)
 {
 	struct rkmpp_context *ctx = NULL;
 	struct epoll_event ev;
+    struct stat stat;
 	int epollfd;
 	MPP_RET ret;
 
 	ENTER();
+
+	/* Filter out invalid fd and real devices */
+    if (fstat(fd, &stat) < 0 || S_ISCHR(stat.st_mode))
+	    RETURN_ERR(errno, NULL);
 
 	pthread_once(&g_rkmpp_global_init_once, rkmpp_global_init);
 
