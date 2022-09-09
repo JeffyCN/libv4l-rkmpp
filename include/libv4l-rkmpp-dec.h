@@ -21,6 +21,10 @@
 #define V4L2_PIX_FMT_VP9	v4l2_fourcc('V', 'P', '9', '0') /* VP9 */
 #endif
 
+#ifndef V4L2_PIX_FMT_HEVC
+#define V4L2_PIX_FMT_HEVC	v4l2_fourcc('H', 'E', 'V', 'C') /* HEVC */
+#endif
+
 /**
  * struct rkmpp_video_info - Video information
  * @valid:		Data is valid.

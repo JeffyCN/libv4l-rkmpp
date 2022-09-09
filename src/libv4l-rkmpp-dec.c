@@ -28,6 +28,21 @@ static const struct rkmpp_fmt rkmpp_dec_fmts[] = {
 		.depth = { 12 },
 	},
 	{
+		.name = "H.265",
+		.fourcc = V4L2_PIX_FMT_HEVC,
+		.num_planes = 1,
+		.type = MPP_VIDEO_CodingHEVC,
+		.format = MPP_FMT_BUTT,
+		.frmsize = {
+			.min_width = 48,
+			.max_width = 3840,
+			.step_width = RKMPP_MB_DIM,
+			.min_height = 48,
+			.max_height = 2160,
+			.step_height = RKMPP_MB_DIM,
+		},
+	},
+	{
 		.name = "H.264",
 		.fourcc = V4L2_PIX_FMT_H264,
 		.num_planes = 1,
@@ -624,6 +639,7 @@ static int rkmpp_dec_g_ctrl(struct rkmpp_dec_context *dec,
 	/* Information provided by Herman Chen <herman.chen@rock-chips.com> */
 	switch (ctx->output.rkmpp_format->fourcc) {
 	case V4L2_PIX_FMT_H264:
+	case V4L2_PIX_FMT_HEVC:
 		ctrl->value = 20;
 		break;
 	case V4L2_PIX_FMT_VP9:
