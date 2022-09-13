@@ -14,8 +14,8 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 ## Building
 
 ```
-   $ autoreconf -i --force
-   $ ./configure
+   $ meson build
+   $ meson compile -C build
 ```
 
 ## Quick Start

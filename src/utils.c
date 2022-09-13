@@ -12,7 +12,6 @@
  *  GNU General Public License for more details.
  */
 
-#include <xf86drm.h>
 #include <sys/mman.h>
 
 #include "libv4l-rkmpp.h"
