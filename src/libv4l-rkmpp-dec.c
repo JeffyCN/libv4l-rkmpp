@@ -18,7 +18,7 @@
 
 #define RKMPP_DEC_POLL_TIMEOUT_MS	500
 
-static const struct rkmpp_fmt rkmpp_dec_fmts[] = {
+static struct rkmpp_fmt rkmpp_dec_fmts[] = {
 	{
 		.name = "4:2:0 1 plane Y/CbCr",
 		.fourcc = V4L2_PIX_FMT_NV12,
@@ -713,6 +713,12 @@ void *rkmpp_dec_init(struct rkmpp_context *ctx)
 	ctx->formats = rkmpp_dec_fmts;
 	ctx->num_formats = ARRAY_SIZE(rkmpp_dec_fmts);
 	dec->ctx = ctx;
+
+	if (!ctx->max_width)
+		ctx->max_width = MAX_DEC_WIDTH;
+
+	if (!ctx->max_height)
+		ctx->max_height = MAX_DEC_HEIGHT;
 
 	pthread_cond_init(&dec->decoder_cond, NULL);
 	pthread_mutex_init(&dec->decoder_mutex, NULL);

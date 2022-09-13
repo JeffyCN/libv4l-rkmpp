@@ -21,6 +21,11 @@ if rga_dep.found() and not get_option('rga').disabled()
   cdata.set10('HAVE_RGA', 1)
 endif
 
+cdata.set('MAX_DEC_WIDTH', get_option('max-dec-width'))
+cdata.set('MAX_DEC_HEIGHT', get_option('max-dec-height'))
+cdata.set('MAX_ENC_WIDTH', get_option('max-enc-width'))
+cdata.set('MAX_ENC_HEIGHT', get_option('max-enc-height'))
+
 configure_file(output : 'config.h', configuration : cdata)
 
 deps = [

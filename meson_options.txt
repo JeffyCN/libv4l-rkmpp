@@ -4,3 +4,11 @@ option('rga', type : 'feature', value : 'auto',
        description : 'Use Rockchip librga (default: auto)')
 option('libv4l2subdir', type : 'string', value : 'libv4l',
        description : 'Libv4l2 library subdir (default: libv4l)')
+option('max-dec-width', type : 'integer', min : 1920, value : 3840,
+       description : 'Max decode width (default: 3840)')
+option('max-dec-height', type : 'integer', min : 1080, value : 2160,
+       description : 'Max decode height (default: 2160)')
+option('max-enc-width', type : 'integer', min : 1920, value : 1920,
+       description : 'Max encode width (default: 1920)')
+option('max-enc-height', type : 'integer', min : 1080, value : 1080,
+       description : 'Max encode height (default: 1080)')

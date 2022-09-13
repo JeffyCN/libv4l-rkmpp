@@ -27,7 +27,7 @@
 
 #define RKMPP_ENC_POLL_TIMEOUT_MS	100
 
-static const struct rkmpp_fmt rkmpp_enc_fmts[] = {
+static struct rkmpp_fmt rkmpp_enc_fmts[] = {
 	{
 		.name = "4:2:0 3 plane Y/Cb/Cr",
 		.fourcc = V4L2_PIX_FMT_YUV420M,
@@ -1091,6 +1091,12 @@ void *rkmpp_enc_init(struct rkmpp_context *ctx)
 	ctx->formats = rkmpp_enc_fmts;
 	ctx->num_formats = ARRAY_SIZE(rkmpp_enc_fmts);
 	enc->ctx = ctx;
+
+	if (!ctx->max_width)
+		ctx->max_width = MAX_ENC_WIDTH;
+
+	if (!ctx->max_height)
+		ctx->max_height = MAX_ENC_HEIGHT;
 
 	enc->h264.profile = MPP_H264_PROFILE_HIGH;
 	enc->h264.level = 40; /* 1080p@30fps */

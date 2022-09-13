@@ -222,7 +222,7 @@ struct rkmpp_buf_queue {
  * @data:		Private data.
  */
 struct rkmpp_context {
-	const struct rkmpp_fmt *formats;
+	struct rkmpp_fmt *formats;
 	uint32_t num_formats;
 
 	bool is_decoder;
@@ -239,6 +239,9 @@ struct rkmpp_context {
 
 	uint64_t frames;
 	uint64_t last_fps_time;
+
+	unsigned int max_width;
+	unsigned int max_height;
 
 	void *data;
 };

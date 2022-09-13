@@ -693,6 +693,7 @@ static void *plugin_init(int fd)
 	struct rkmpp_context *ctx = NULL;
 	struct epoll_event ev;
 	struct stat stat;
+	unsigned int i;
 	int epollfd;
 	MPP_RET ret;
 
@@ -768,6 +769,15 @@ static void *plugin_init(int fd)
 
 	if (!ctx->data)
 		goto err_put_group;
+
+	for (i = 0; i < ctx->num_formats; i++) {
+		struct rkmpp_fmt *fmt = &ctx->formats[i];
+		if (fmt->type == MPP_VIDEO_CodingNone)
+			continue;
+
+		fmt->frmsize.max_width = ctx->max_width;
+		fmt->frmsize.max_height = ctx->max_height;
+	}
 
 	LOGV(1, "ctx(%p): plugin inited\n", (void *)ctx);
 
