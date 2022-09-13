@@ -72,7 +72,6 @@ static const struct rkmpp_fmt rkmpp_dec_fmts[] = {
 			.step_height = RKMPP_MB_DIM,
 		},
 	},
-	/* VP9 only enabled in chromeos */
 	{
 		.name = "VP9",
 		.fourcc = V4L2_PIX_FMT_VP9,
@@ -244,7 +243,7 @@ static void *decoder_thread_fn(void *data)
 
 	ENTER();
 
-	LOGV(1, "ctx(%p): starting decoder thread\n", ctx);
+	LOGV(1, "ctx(%p): starting decoder thread\n", (void *)ctx);
 
 	while (1) {
 		pthread_mutex_lock(&dec->decoder_mutex);
@@ -519,7 +518,7 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 	struct rkmpp_context *ctx = dec->ctx;
 	struct rkmpp_buffer *rkmpp_buffer;
 	struct rkmpp_buf_queue *queue;
-	int i;
+	unsigned int i;
 
 	ENTER();
 
@@ -665,7 +664,7 @@ static int rkmpp_dec_g_ext_ctrls(struct rkmpp_dec_context *dec,
 {
 	struct rkmpp_context *ctx = dec->ctx;
 	struct v4l2_control ctrl;
-	int i;
+	unsigned int i;
 
 	ENTER();
 

@@ -83,10 +83,9 @@ void rkmpp_new_frame(struct rkmpp_context *ctx)
 	    ctx->is_decoder ? "DEC" : "ENC", fps, ctx->frames);
 }
 
-static void rkmpp_destroy_buffers(struct rkmpp_context *ctx,
-				  struct rkmpp_buf_queue *queue)
+static void rkmpp_destroy_buffers(struct rkmpp_buf_queue *queue)
 {
-	int i;
+	unsigned int i;
 
 	if (!queue->num_buffers)
 		return;
@@ -113,7 +112,8 @@ static const
 struct rkmpp_fmt *rkmpp_find_fmt(struct rkmpp_context *ctx,
 				 uint32_t fourcc)
 {
-	int i;
+	unsigned int i;
+
 	for (i = 0; i < ctx->num_formats; i++) {
 		if (ctx->formats[i].fourcc == fourcc)
 			return &ctx->formats[i];
@@ -148,7 +148,7 @@ int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 {
 	const struct rkmpp_fmt *fmt;
 	bool compressed;
-	int i, j;
+	unsigned int i, j;
 
 	ENTER();
 
@@ -220,7 +220,7 @@ int rkmpp_enum_framesizes(struct rkmpp_context *ctx,
 }
 
 static void calculate_plane_sizes(const struct rkmpp_fmt *fmt,
-                                  struct v4l2_pix_format_mplane *pix_fmt_mp)
+				  struct v4l2_pix_format_mplane *pix_fmt_mp)
 {
 	unsigned int w = pix_fmt_mp->width;
 	unsigned int h = pix_fmt_mp->height;
@@ -363,7 +363,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 	MppBuffer buffer;
 	MPP_RET ret;
 	uint32_t sizeimage;
-	int i;
+	unsigned int i;
 
 	ENTER();
 
@@ -378,12 +378,12 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 
 	if (!reqbufs->count) {
 		LOGV(1, "release buffers\n");
-		rkmpp_destroy_buffers(ctx, queue);
+		rkmpp_destroy_buffers(queue);
 		goto out;
 	}
 
 	if (queue->num_buffers)
-		rkmpp_destroy_buffers(ctx, queue);
+		rkmpp_destroy_buffers(queue);
 
 	for (i = 0, sizeimage = 0; i < queue->format.num_planes; i++)
 		sizeimage += queue->format.plane_fmt[i].sizeimage;
@@ -467,7 +467,7 @@ out:
 	LEAVE();
 	return 0;
 err:
-	rkmpp_destroy_buffers(ctx, queue);
+	rkmpp_destroy_buffers(queue);
 	RETURN_ERR(EIO, -1);
 }
 
@@ -692,15 +692,15 @@ static void *plugin_init(int fd)
 {
 	struct rkmpp_context *ctx = NULL;
 	struct epoll_event ev;
-    struct stat stat;
+	struct stat stat;
 	int epollfd;
 	MPP_RET ret;
 
 	ENTER();
 
 	/* Filter out invalid fd and real devices */
-    if (fstat(fd, &stat) < 0 || S_ISCHR(stat.st_mode))
-	    RETURN_ERR(errno, NULL);
+	if (fstat(fd, &stat) < 0 || S_ISCHR(stat.st_mode))
+		RETURN_ERR(errno, NULL);
 
 	pthread_once(&g_rkmpp_global_init_once, rkmpp_global_init);
 
@@ -769,7 +769,7 @@ static void *plugin_init(int fd)
 	if (!ctx->data)
 		goto err_put_group;
 
-	LOGV(1, "ctx(%p): plugin inited\n", ctx);
+	LOGV(1, "ctx(%p): plugin inited\n", (void *)ctx);
 
 	LEAVE();
 	return ctx;
@@ -794,14 +794,14 @@ static void plugin_close(void *dev_ops_priv)
 
 	ENTER();
 
-	LOGV(1, "ctx(%p): closing plugin\n", ctx);
+	LOGV(1, "ctx(%p): closing plugin\n", (void *)ctx);
 
 	if (ctx->is_decoder)
 		rkmpp_dec_deinit(ctx->data);
 	else
 		rkmpp_enc_deinit(ctx->data);
 
-	rkmpp_destroy_buffers(ctx, &ctx->output);
+	rkmpp_destroy_buffers(&ctx->output);
 
 	if (ctx->output.internal_group)
 		mpp_buffer_group_put(ctx->output.internal_group);
@@ -809,7 +809,7 @@ static void plugin_close(void *dev_ops_priv)
 	if (ctx->output.external_group)
 		mpp_buffer_group_put(ctx->output.external_group);
 
-	rkmpp_destroy_buffers(ctx, &ctx->capture);
+	rkmpp_destroy_buffers(&ctx->capture);
 
 	if (ctx->capture.external_group)
 		mpp_buffer_group_put(ctx->capture.external_group);
@@ -835,14 +835,14 @@ static int plugin_ioctl(void *dev_ops_priv, int fd,
 
 	pthread_mutex_lock(&ctx->ioctl_mutex);
 
-	LOGV(4, "ctx(%p): %s\n", ctx, rkmpp_cmd2str(cmd));
+	LOGV(4, "ctx(%p): %s\n", (void *)ctx, rkmpp_cmd2str(cmd));
 
 	if (ctx->is_decoder)
 		ret = rkmpp_dec_ioctl(ctx->data, cmd, arg);
 	else
 		ret = rkmpp_enc_ioctl(ctx->data, cmd, arg);
 
-	LOGV(4, "ctx(%p): %s  ret: %d\n", ctx, rkmpp_cmd2str(cmd), ret);
+	LOGV(4, "ctx(%p): %s  ret: %d\n", (void *)ctx, rkmpp_cmd2str(cmd), ret);
 
 	pthread_mutex_unlock(&ctx->ioctl_mutex);
 
@@ -860,7 +860,7 @@ static void *plugin_mmap(void *dev_ops_priv, void *start,
 	struct rkmpp_buffer *rkmpp_buffer;
 	struct rkmpp_buf_queue *queue;
 	void *ptr;
-	int index;
+	unsigned int index;
 
 	ENTER();
 

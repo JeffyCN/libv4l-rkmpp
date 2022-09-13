@@ -144,12 +144,11 @@ static int rkmpp_put_frame(struct rkmpp_enc_context *enc)
 	return 0;
 }
 
-static void rkmpp_packet_to_buffer(struct rkmpp_enc_context *enc,
-				   MppPacket packet,
+static void rkmpp_packet_to_buffer(MppPacket packet,
 				   struct rkmpp_buffer *rkmpp_buffer)
 {
-	void *src = mpp_packet_get_pos(packet);
-	void *dst = mpp_buffer_get_ptr(rkmpp_buffer->rkmpp_buf);
+	char *src = mpp_packet_get_pos(packet);
+	char *dst = mpp_buffer_get_ptr(rkmpp_buffer->rkmpp_buf);
 	uint32_t src_size = mpp_packet_get_length(packet);
 	uint32_t offset = rkmpp_buffer->bytesused;
 	uint32_t dst_size = rkmpp_buffer->size;
@@ -207,7 +206,7 @@ static void rkmpp_send_header(struct rkmpp_enc_context *enc)
 	rkmpp_buffer_clr_pending(rkmpp_buffer);
 
 	rkmpp_buffer->bytesused = 0;
-	rkmpp_packet_to_buffer(enc, enc->header, rkmpp_buffer);
+	rkmpp_packet_to_buffer(enc->header, rkmpp_buffer);
 
 	TAILQ_INSERT_TAIL(&ctx->capture.avail_buffers,
 			  rkmpp_buffer, entry);
@@ -229,7 +228,7 @@ static void *encoder_thread_fn(void *data)
 
 	ENTER();
 
-	LOGV(1, "ctx(%p): starting encoder thread\n", ctx);
+	LOGV(1, "ctx(%p): starting encoder thread\n", (void *)ctx);
 
 	while (1) {
 		pthread_mutex_lock(&enc->encoder_mutex);
@@ -292,11 +291,11 @@ static void *encoder_thread_fn(void *data)
 		if (enc->type == H264 && enc->needs_header &&
 		    !enc->h264.separate_header) {
 			/* Join the header to the 1st frame */
-			rkmpp_packet_to_buffer(enc, enc->header, rkmpp_buffer);
+			rkmpp_packet_to_buffer(enc->header, rkmpp_buffer);
 			enc->needs_header = false;
 		}
 
-		rkmpp_packet_to_buffer(enc, packet, rkmpp_buffer);
+		rkmpp_packet_to_buffer(packet, rkmpp_buffer);
 
 		meta = mpp_packet_get_meta(packet);
 		if (meta) {
@@ -402,8 +401,8 @@ static int rkmpp_enc_apply_h264_cfg(struct rkmpp_enc_context *enc)
 			    enc->h264.profile != MPP_H264_PROFILE_BASELINE);
 	mpp_enc_cfg_set_s32(cfg, "h264:cabac_idc", 0);
 
-	mpp_enc_cfg_set_s32(cfg, "h264:qp_max", enc->max_qp ?: 28);
-	mpp_enc_cfg_set_s32(cfg, "h264:qp_min", enc->min_qp ?: 4);
+	mpp_enc_cfg_set_s32(cfg, "h264:qp_max", enc->max_qp ? enc->max_qp : 28);
+	mpp_enc_cfg_set_s32(cfg, "h264:qp_min", enc->min_qp ? enc->min_qp : 4);
 
 	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_CFG, cfg);
 	if (ret != MPP_OK) {
@@ -436,7 +435,7 @@ static int rkmpp_enc_apply_vp8_cfg(struct rkmpp_enc_context *enc)
 	}
 
 	mpp_enc_cfg_set_s32(cfg, "vp8:qp_init", 40);
-	mpp_enc_cfg_set_s32(cfg, "vp8:qp_max", enc->max_qp ?: 127);
+	mpp_enc_cfg_set_s32(cfg, "vp8:qp_max", enc->max_qp ? enc->max_qp : 127);
 	mpp_enc_cfg_set_s32(cfg, "vp8:qp_min", enc->min_qp);
 
 	mpp_enc_cfg_set_s32(cfg, "vp8:disable_ivf", 1);
@@ -704,7 +703,7 @@ static int rkmpp_enc_streamoff(struct rkmpp_enc_context *enc,
 	struct rkmpp_context *ctx = enc->ctx;
 	struct rkmpp_buffer *rkmpp_buffer;
 	struct rkmpp_buf_queue *queue;
-	int i;
+	unsigned int i;
 
 	ENTER();
 
@@ -772,7 +771,6 @@ static int rkmpp_enc_s_selection(struct rkmpp_enc_context *enc,
 				 struct v4l2_selection *selection)
 {
 	struct rkmpp_context *ctx = enc->ctx;
-	struct v4l2_pix_format_mplane *fmt = &ctx->output.format;
 	struct v4l2_rect *rect = &selection->r;
 
 	ENTER();
@@ -872,7 +870,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 {
 	struct rkmpp_context *ctx = enc->ctx;
 	struct v4l2_ext_control *ctrl;
-	int i;
+	unsigned int i;
 
 	ENTER();
 
@@ -1075,6 +1073,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 bool rkmpp_enc_has_event(void *data)
 {
+  (void)data; /* unused */
 	return false;
 }
 

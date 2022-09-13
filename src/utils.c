@@ -21,13 +21,19 @@
 #include <rga/RgaApi.h>
 #endif
 
-static int rkmpp_rga_copy(struct rkmpp_context *ctx,
-			  const struct v4l2_pix_format_mplane *format,
+static int rkmpp_rga_copy(const struct v4l2_pix_format_mplane *format,
 			  const struct rkmpp_fmt *rkmpp_format,
 			  int rkmpp_fd, void *v4l2_addr,
 			  int copy_to)
 {
-#ifdef HAVE_RGA
+#ifndef HAVE_RGA
+	(void)format; /* unused */
+	(void)rkmpp_format; /* unused */
+	(void)rkmpp_fd; /* unused */
+	(void)v4l2_addr; /* unused */
+	(void)copy_to; /* unused */
+	return -1;
+#else
 	RgaSURF_FORMAT rga_format;
 	rga_info_t src_info = {0};
 	rga_info_t dst_info = {0};
@@ -96,8 +102,6 @@ static int rkmpp_rga_copy(struct rkmpp_context *ctx,
 		return c_RkRgaBlit(&src_info, &dst_info, NULL) >= 0;
 	else
 		return c_RkRgaBlit(&dst_info, &src_info, NULL) >= 0;
-#else
-	return -1;
 #endif
 }
 
@@ -108,10 +112,11 @@ static int rkmpp_copy_buffer(struct rkmpp_context *ctx,
 	struct rkmpp_buf_queue *queue;
 	const struct rkmpp_fmt *rkmpp_format;
 	const struct v4l2_pix_format_mplane *format;
-	void *rkmpp_ptr;
-	void *addrs[3] = {0};
+	char *rkmpp_ptr;
+	char *addrs[3] = {0};
 	uint32_t sizes[3], offsets[3];
-	int i, ret = -1;
+	unsigned int i;
+	int ret = -1;
 
 	ENTER();
 
@@ -168,7 +173,7 @@ static int rkmpp_copy_buffer(struct rkmpp_context *ctx,
 			goto bail;
 	}
 
-	if (rkmpp_rga_copy(ctx, format, rkmpp_format,
+	if (rkmpp_rga_copy(format, rkmpp_format,
 			   rkmpp_buffer->fd, addrs[0], copy_to) < 0)
 		goto bail;
 
@@ -222,7 +227,7 @@ int rkmpp_to_v4l2_buffer(struct rkmpp_context *ctx,
 			 struct rkmpp_buffer *rkmpp_buffer,
 			 struct v4l2_buffer *buffer)
 {
-	int i, ret;
+	unsigned int i;
 
 	ENTER();
 
@@ -289,7 +294,7 @@ int rkmpp_from_v4l2_buffer(struct rkmpp_context *ctx,
 			   struct v4l2_buffer *buffer,
 			   struct rkmpp_buffer *rkmpp_buffer)
 {
-	int i;
+	unsigned int i;
 
 	ENTER();
 

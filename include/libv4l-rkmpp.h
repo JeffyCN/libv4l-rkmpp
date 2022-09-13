@@ -39,40 +39,31 @@ extern int rkmpp_log_level;
 
 #define gettid() syscall(SYS_gettid)
 
-#define LOG(fmt, ...) ({ \
+#define LOG(fmt, ...) do { \
 	struct timeval tv; \
 	gettimeofday(&tv, NULL); \
 	printf("[%03ld.%03ld] [RKMPP] [%ld] %s(%d): " fmt, \
 	       tv.tv_sec % 1000, tv.tv_usec / 1000, gettid(), \
 	       __func__, __LINE__, ##__VA_ARGS__); \
 	fflush(stdout); \
-	})
+	} while (0)
 
 #define LOGV(level, fmt, ...) \
-	({ if (rkmpp_log_level >= level) LOG(fmt, ##__VA_ARGS__); })
+	do { if (rkmpp_log_level >= level) LOG(fmt, ##__VA_ARGS__); } while (0)
 
 #define LOGE(fmt, ...) LOG("ERR: " fmt, ##__VA_ARGS__)
 
 #define RETURN_ERR(err, ret) \
-	({ errno = err; LOGV(2, "errno: %d\n", errno); return ret; })
+	{ errno = err; LOGV(2, "errno: %d\n", errno); return ret; }
 
-#define ENTER()			LOGV(5, "ctx(%p): ENTER\n", ctx)
-#define LEAVE()			LOGV(5, "ctx(%p): LEAVE\n", ctx)
+#define ENTER()			LOGV(5, "ctx(%p): ENTER\n", (void *)ctx)
+#define LEAVE()			LOGV(5, "ctx(%p): LEAVE\n", (void *)ctx)
+
+#define min(x, y) ((x) < (y) ? (x) : (y))
+#define max(x, y) ((x) > (y) ? (x) : (y))
 
 /* From kernel's linux/kernel.h */
 #define ARRAY_SIZE(arr)		(sizeof(arr) / sizeof((arr)[0]))
-
-#define min(x, y) ({ 				\
-	typeof(x) _min1 = (x); 			\
-	typeof(y) _min2 = (y); 			\
-	(void) (&_min1 == &_min2); 		\
-	_min1 < _min2 ? _min1 : _min2; })
-
-#define max(x, y) ({ 				\
-	typeof(x) _max1 = (x); 			\
-	typeof(y) _max2 = (y); 			\
-	(void) (&_max1 == &_max2); 		\
-	_max1 > _max2 ? _max1 : _max2; })
 
 #define clamp(val, lo, hi) 	min((typeof(val))max(val, lo), hi)
 
