@@ -662,23 +662,62 @@ int rkmpp_update_poll_event(struct rkmpp_context *ctx)
 
 static int rkmpp_parse_options(struct rkmpp_context *ctx, int fd)
 {
-	char options[1024] = {0};
-	int ret;
-
 	ENTER();
 
-	// TODO: Support more options
-	ret = read(fd, options, sizeof(options) - 1);
+#define MAX_OPT_LEN 1024
+#define OPT_DEC "dec"
+#define OPT_ENC "enc"
+#define OPT_LOG_LEVEL "log-level="
+#define OPT_LOG_FPS "log-fps="
+#define OPT_MAX_WIDTH "max-width="
+#define OPT_MAX_HEIGHT "max-height="
+#define OPT_MATCH(o) (!strncmp(option, o, strlen(o)))
+#define OPT_VALUE(o) (atoi(&option[strlen(o)]))
+#define IS_SPACE(c) \
+	((c) == '\r' || (c) == '\n' || (c) == ' ' || (c) == '\t')
 
-	LOGV(1, "parsing options: %s\n", options);
+	while (1) {
+		char option[MAX_OPT_LEN + 1] = {0,};
+		char c;
+		int n = 0;
 
-	if (!ret || !strncmp(options, "dec", 3)) {
-		ctx->is_decoder = true;
-	} else if (!strncmp(options, "enc", 3)) {
-		ctx->is_decoder = false;
-	} else {
-		LOGV(1, "unknown options\n");
-		RETURN_ERR(ENODEV, -1);
+		while (read(fd, &c, 1) > 0) {
+			if (IS_SPACE(c)) {
+				/* End of one option */
+				if (n)
+					break;
+
+				/* Eat leading spaces */
+				continue;
+			}
+
+			option[n++] = c;
+			if (n == MAX_OPT_LEN)
+				break;
+		}
+
+		/* End of options */
+		if (!n)
+			break;
+
+		LOGV(1, "parsing option: %s\n", option);
+
+		if (OPT_MATCH(OPT_DEC)) {
+			ctx->is_decoder = true;
+		} else if (OPT_MATCH(OPT_ENC)) {
+			ctx->is_decoder = false;
+		} else if (OPT_MATCH(OPT_LOG_LEVEL)) {
+			rkmpp_log_level = OPT_VALUE(OPT_LOG_LEVEL);
+		} else if (OPT_MATCH(OPT_LOG_FPS)) {
+			rkmpp_log_fps = OPT_VALUE(OPT_LOG_FPS);
+		} else if (OPT_MATCH(OPT_MAX_WIDTH)) {
+			ctx->max_width = OPT_VALUE(OPT_MAX_WIDTH);
+		} else if (OPT_MATCH(OPT_MAX_HEIGHT)) {
+			ctx->max_height = OPT_VALUE(OPT_MAX_HEIGHT);
+		} else {
+			LOGV(1, "unknown options\n");
+			RETURN_ERR(ENODEV, -1);
+		}
 	}
 
 	if (fcntl(fd, F_GETFL) & O_NONBLOCK)
