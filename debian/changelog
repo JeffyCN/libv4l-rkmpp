@@ -1,3 +1,13 @@
+libv4l-rkmpp (1.5.0-1.1) stable; urgency=medium
+
+  * dec: Support HEVC
+  * Switch to meson build system
+  * Fix a few compile warnings
+  * meson: Support setting dec/enc size limits
+  * Support more device options
+
+ -- Jeffy Chen <jeffy.chen@rock-chips.com>  Wed, 14 Sep 2022 10:16:33 +0800
+
 libv4l-rkmpp (1.4.0-1) stable; urgency=medium
 
   * dec: Adjust V4L2_CID_MIN_BUFFERS_FOR_CAPTURE
