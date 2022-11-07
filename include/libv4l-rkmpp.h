@@ -158,6 +158,7 @@ struct rkmpp_buffer {
 	uint32_t length;
 	uint32_t flags;
 	uint32_t size;
+	uint32_t type;
 
 	struct {
 		unsigned long userptr;
@@ -365,16 +366,20 @@ static inline bool rkmpp_buffer_## name(struct rkmpp_buffer *buffer) \
 #define RKMPP_BUFFER_FLAG_HELPER_SET(flag, name) \
 static inline void rkmpp_buffer_set_ ## name(struct rkmpp_buffer *buffer) \
 { \
+	LOGV(4, "buffer: %d type: %d\n", buffer->index, buffer->type); \
 	if (rkmpp_buffer_ ## name(buffer)) \
-		LOGE("buffer(%d) is already " #name "\n", buffer->index); \
+		LOGE("buffer: %d type: %d is already " #name "\n", \
+		     buffer->index, buffer->type); \
 	buffer->flags |= flag; \
 }
 
 #define RKMPP_BUFFER_FLAG_HELPER_CLR(flag, name) \
 static inline void rkmpp_buffer_clr_ ## name(struct rkmpp_buffer *buffer) \
 { \
+	LOGV(4, "buffer: %d type: %d\n", buffer->index, buffer->type); \
 	if (!rkmpp_buffer_ ## name(buffer)) \
-		LOGE("buffer(%d) is not " #name "\n", buffer->index); \
+		LOGE("buffer: %d type: %d is not " #name "\n", \
+		     buffer->index, buffer->type); \
 	buffer->flags &= ~flag; \
 }
 

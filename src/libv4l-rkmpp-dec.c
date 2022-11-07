@@ -133,8 +133,8 @@ static void rkmpp_put_packets(struct rkmpp_dec_context *dec)
 			break;
 		}
 
-		LOGV(3, "put packet(%" PRIu64 "): %d len=%d\n",
-		     rkmpp_buffer->timestamp, rkmpp_buffer->index,
+		LOGV(3, "put packet: %d(%" PRIu64 ") len=%d\n",
+		     rkmpp_buffer->index, rkmpp_buffer->timestamp,
 		     rkmpp_buffer->bytesused);
 
 		rkmpp_buffer->bytesused = 0;
@@ -325,8 +325,8 @@ static void *decoder_thread_fn(void *data)
 				dec->video_info.ver_stride * 3 / 2;
 		}
 
-		LOGV(3, "return frame(%" PRIu64 "): %d\n",
-		     rkmpp_buffer->timestamp, index);
+		LOGV(3, "return frame: %d(%" PRIu64 ")\n",
+		     index, rkmpp_buffer->timestamp);
 
 		/* Report new frame to count fps */
 		rkmpp_new_frame(ctx);
@@ -435,6 +435,8 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 		goto out;
 	queue->streaming = true;
 
+	LOGV(1, "queue(%d) start streaming\n", *type);
+
 	/* Commit pending info change to mpp */
 	if (dec->mpp_streaming && dec->video_info.dirty &&
 	    *type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
@@ -529,6 +531,8 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 	if (!queue->streaming)
 		goto out;
 	queue->streaming = false;
+
+	LOGV(1, "queue(%d) stop streaming\n", *type);
 
 	pthread_mutex_lock(&dec->decoder_mutex);
 

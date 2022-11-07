@@ -135,8 +135,8 @@ static int rkmpp_put_frame(struct rkmpp_enc_context *enc)
 		return -1;
 	}
 
-	LOGV(3, "put frame(%" PRIu64 "): %d\n",
-	     rkmpp_buffer->timestamp, rkmpp_buffer->index);
+	LOGV(3, "put frame: %d(%" PRIu64 ")\n",
+	     rkmpp_buffer->index, rkmpp_buffer->timestamp);
 
 	rkmpp_buffer->bytesused = 0;
 
@@ -317,8 +317,8 @@ static void *encoder_thread_fn(void *data)
 
 		rkmpp_buffer->timestamp = frame_buffer->timestamp;
 
-		LOGV(3, "return frame(%" PRIu64 "): %d\n",
-		     frame_buffer->timestamp, index);
+		LOGV(3, "return frame: %d(%" PRIu64 ")\n",
+		     index, frame_buffer->timestamp);
 
 		pthread_mutex_lock(&ctx->output.queue_mutex);
 		TAILQ_INSERT_TAIL(&ctx->output.avail_buffers,
@@ -329,8 +329,8 @@ static void *encoder_thread_fn(void *data)
 		/* Report new frame to count fps */
 		rkmpp_new_frame(ctx);
 
-		LOGV(3, "return packet(%" PRIu64 "): %d len=%d\n",
-		     rkmpp_buffer->timestamp, rkmpp_buffer->index,
+		LOGV(3, "return packet: %d(%" PRIu64 ") len=%d\n",
+		     rkmpp_buffer->index, rkmpp_buffer->timestamp,
 		     rkmpp_buffer->bytesused);
 
 		pthread_mutex_lock(&ctx->capture.queue_mutex);
@@ -610,6 +610,8 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 		goto out;
 	queue->streaming = true;
 
+	LOGV(1, "queue(%d) start streaming\n", *type);
+
 	if (enc->mpp_streaming)
 		goto out;
 
@@ -714,6 +716,8 @@ static int rkmpp_enc_streamoff(struct rkmpp_enc_context *enc,
 	if (!queue->streaming)
 		goto out;
 	queue->streaming = false;
+
+	LOGV(1, "queue(%d) stop streaming\n", *type);
 
 	pthread_mutex_lock(&enc->encoder_mutex);
 

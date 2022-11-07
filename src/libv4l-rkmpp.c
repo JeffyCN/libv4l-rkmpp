@@ -425,6 +425,7 @@ int rkmpp_reqbufs(struct rkmpp_context *ctx,
 		queue->buffers[i].fd = mpp_buffer_get_fd(buffer);
 		queue->buffers[i].size = sizeimage;
 		queue->buffers[i].index = i;
+		queue->buffers[i].type = reqbufs->type;
 		queue->buffers[i].length = queue->format.num_planes;
 		queue->buffers[i].planes[0].length = sizeimage;
 		rkmpp_buffer_set_locked(&queue->buffers[i]);
