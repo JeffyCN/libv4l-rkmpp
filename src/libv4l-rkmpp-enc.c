@@ -612,7 +612,9 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 
 	LOGV(1, "queue(%d) start streaming\n", *type);
 
-	if (enc->mpp_streaming)
+	/* Start mpp streaming only when all queues started */
+	if (enc->mpp_streaming ||
+	    !ctx->output.streaming || !ctx->capture.streaming)
 		goto out;
 
 	switch (rkmpp_fmt->fourcc) {
@@ -752,7 +754,7 @@ static int rkmpp_enc_streamoff(struct rkmpp_enc_context *enc,
 			rkmpp_buffer_clr_available(rkmpp_buffer);
 	}
 
-	/* Stop mpp streaming when all queues stopped */
+	/* Stop mpp streaming when any queue stopped */
 	if (!enc->mpp_streaming) {
 		pthread_mutex_unlock(&enc->encoder_mutex);
 		goto out;

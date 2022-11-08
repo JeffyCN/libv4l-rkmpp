@@ -283,19 +283,26 @@ static void *decoder_thread_fn(void *data)
 		/* Handle eos frame, returning eos packet to userspace */
 		if (mpp_frame_get_eos(frame)) {
 			if (dec->eos_packet) {
+				assert(ctx->output.streaming);
+
 				dec->eos_packet->bytesused = 0;
 
 				LOGV(1, "return eos packet: %d\n",
 				     dec->eos_packet->index);
 
+				pthread_mutex_lock(&ctx->output.queue_mutex);
 				TAILQ_INSERT_TAIL(&ctx->output.avail_buffers,
 						  dec->eos_packet, entry);
 				rkmpp_buffer_set_available(dec->eos_packet);
+				pthread_mutex_unlock(&ctx->output.queue_mutex);
 				dec->eos_packet = NULL;
 			}
 
 			goto next_locked;
 		}
+
+		if (!ctx->capture.streaming)
+			goto next_locked;
 
 		/* Handle normal frame */
 		buffer = mpp_frame_get_buffer(frame);
@@ -447,8 +454,7 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 		dec->video_info.dirty = false;
 	}
 
-	/* The chromium will stream output queue firstly to get video info */
-	if (!ctx->output.streaming || dec->mpp_streaming)
+	if (dec->mpp_streaming)
 		goto out;
 
 	LOGV(1, "mpp start streaming\n");
@@ -571,7 +577,7 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 	if (*type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
 		dec->eos_packet = NULL;
 
-	/* Stop mpp streaming when all queues stopped */
+	/* Stop mpp streaming only when all queues stopped */
 	if (!dec->mpp_streaming ||
 	    ctx->output.streaming || ctx->capture.streaming) {
 		pthread_mutex_unlock(&dec->decoder_mutex);
