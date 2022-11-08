@@ -1,3 +1,10 @@
+libv4l-rkmpp (1.5.1-1.1) stable; urgency=medium
+
+  * Add more debug logs
+  * Fix a few streaming status errors
+
+ -- Jeffy Chen <jeffy.chen@rock-chips.com>  Tue, 08 Nov 2022 09:55:20 +0800
+
 libv4l-rkmpp (1.5.0-1.1) stable; urgency=medium
 
   * dec: Support HEVC

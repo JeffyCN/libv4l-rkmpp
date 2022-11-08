@@ -33,7 +33,7 @@
 #include "config.h"
 #include "linux/videodev2.h"
 
-#define LIBV4L_RKMPP_VERSION "1.5.0~20220914"
+#define LIBV4L_RKMPP_VERSION "1.5.1~20221108"
 
 extern int rkmpp_log_level;
 
