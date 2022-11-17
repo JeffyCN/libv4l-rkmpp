@@ -45,7 +45,7 @@ srcs = [
 shared_library(
   'v4l-rkmpp',
   srcs,
-  include_directories : ['.', 'include'],
+  include_directories : include_directories('.', 'include'),
   dependencies : deps,
   install : true,
   install_dir : get_option('libdir') / get_option('libv4l2subdir') / 'plugins',
