@@ -12,3 +12,5 @@ option('max-enc-width', type : 'integer', min : 1920, value : 1920,
        description : 'Max encode width (default: 1920)')
 option('max-enc-height', type : 'integer', min : 1080, value : 1080,
        description : 'Max encode height (default: 1080)')
+option('libraryname', type : 'string', value : 'v4l-rkmpp',
+       description : 'Library name')

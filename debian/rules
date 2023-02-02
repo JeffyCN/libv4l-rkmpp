@@ -5,3 +5,19 @@
 
 %:
 	dh $@ --buildsystem=meson
+
+override_dh_auto_configure:
+	dh_auto_configure -Bbuild-4k -- -Dmax-dec-width=3840 -Dmax-dec-height=2160 -Dlibraryname=v4l-rkmpp-4k
+	dh_auto_configure -Bbuild-8k -- -Dmax-dec-width=7680 -Dmax-dec-height=4320 -Dlibraryname=v4l-rkmpp-8k
+
+override_dh_auto_build:
+	dh_auto_build -Bbuild-4k
+	dh_auto_build -Bbuild-8k
+
+override_dh_auto_test:
+	dh_auto_test -Bbuild-4k
+	dh_auto_test -Bbuild-8k
+
+override_dh_auto_install:
+	dh_auto_install -Bbuild-4k
+	dh_auto_install -Bbuild-8k

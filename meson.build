@@ -43,7 +43,7 @@ srcs = [
 ]
 
 shared_library(
-  'v4l-rkmpp',
+  get_option('libraryname'),
   srcs,
   include_directories : include_directories('.', 'include'),
   dependencies : deps,
