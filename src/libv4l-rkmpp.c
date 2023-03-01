@@ -115,6 +115,9 @@ struct rkmpp_fmt *rkmpp_find_fmt(struct rkmpp_context *ctx,
 	unsigned int i;
 
 	for (i = 0; i < ctx->num_formats; i++) {
+		if (!RKMPP_HAS_FORMAT(ctx, &ctx->formats[i]))
+			continue;
+
 		if (ctx->formats[i].fourcc == fourcc)
 			return &ctx->formats[i];
 	}
@@ -169,6 +172,8 @@ int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 		if (!compressed && (fmt->type != MPP_VIDEO_CodingNone))
 			continue;
 		else if (compressed && (fmt->type == MPP_VIDEO_CodingNone))
+			continue;
+		else if (!RKMPP_HAS_FORMAT(ctx, &ctx->formats[i]))
 			continue;
 
 		if (j == f->index) {
@@ -668,12 +673,15 @@ static int rkmpp_parse_options(struct rkmpp_context *ctx, int fd)
 #define MAX_OPT_LEN 1024
 #define OPT_DEC "dec"
 #define OPT_ENC "enc"
+#define OPT_TYPE "type="
 #define OPT_LOG_LEVEL "log-level="
 #define OPT_LOG_FPS "log-fps="
 #define OPT_MAX_WIDTH "max-width="
 #define OPT_MAX_HEIGHT "max-height="
+#define OPT_CODECS "codecs="
 #define OPT_MATCH(o) (!strncmp(option, o, strlen(o)))
-#define OPT_VALUE(o) (atoi(&option[strlen(o)]))
+#define OPT_VALUE_INT(o) (atoi(&option[strlen(o)]))
+#define OPT_VALUE_STR(o) (&option[strlen(o)])
 #define IS_SPACE(c) \
 	((c) == '\r' || (c) == '\n' || (c) == ' ' || (c) == '\t')
 
@@ -707,14 +715,21 @@ static int rkmpp_parse_options(struct rkmpp_context *ctx, int fd)
 			ctx->is_decoder = true;
 		} else if (OPT_MATCH(OPT_ENC)) {
 			ctx->is_decoder = false;
+		} else if (OPT_MATCH(OPT_TYPE)) {
+			ctx->is_decoder =
+				!strcmp(OPT_VALUE_STR(OPT_TYPE), "dec");
 		} else if (OPT_MATCH(OPT_LOG_LEVEL)) {
-			rkmpp_log_level = OPT_VALUE(OPT_LOG_LEVEL);
+			rkmpp_log_level = OPT_VALUE_INT(OPT_LOG_LEVEL);
 		} else if (OPT_MATCH(OPT_LOG_FPS)) {
-			rkmpp_log_fps = OPT_VALUE(OPT_LOG_FPS);
+			rkmpp_log_fps = OPT_VALUE_INT(OPT_LOG_FPS);
 		} else if (OPT_MATCH(OPT_MAX_WIDTH)) {
-			ctx->max_width = OPT_VALUE(OPT_MAX_WIDTH);
+			ctx->max_width = OPT_VALUE_INT(OPT_MAX_WIDTH);
 		} else if (OPT_MATCH(OPT_MAX_HEIGHT)) {
-			ctx->max_height = OPT_VALUE(OPT_MAX_HEIGHT);
+			ctx->max_height = OPT_VALUE_INT(OPT_MAX_HEIGHT);
+		} else if (OPT_MATCH(OPT_CODECS)) {
+			if (ctx->codecs)
+				free(ctx->codecs);
+			ctx->codecs = strdup(OPT_VALUE_STR(OPT_CODECS));
 		} else {
 			LOGV(1, "unknown options\n");
 			RETURN_ERR(ENODEV, -1);
@@ -866,6 +881,9 @@ static void plugin_close(void *dev_ops_priv)
 
 	if (ctx->capture.internal_group)
 		mpp_buffer_group_put(ctx->capture.internal_group);
+
+	if (ctx->codecs)
+		free(ctx->codecs);
 
 	close(ctx->eventfd);
 	free(ctx);

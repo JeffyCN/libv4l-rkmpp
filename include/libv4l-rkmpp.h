@@ -94,6 +94,10 @@ extern int rkmpp_log_level;
 #define RKMPP_MEM_OFFSET_TYPE(offset)	(int)((offset) >> 16)
 #define RKMPP_MEM_OFFSET_INDEX(offset)	(int)((offset) & ((1 << 16) - 1))
 
+#define RKMPP_HAS_FORMAT(ctx, format) \
+	(!((format)->type != MPP_VIDEO_CodingNone && (ctx)->codecs && \
+	   !strstr((ctx)->codecs, (format)->name)))
+
 /**
  * struct rkmpp_fmt - Information about mpp supported format
  * @name:		Format's name.
@@ -243,6 +247,7 @@ struct rkmpp_context {
 
 	unsigned int max_width;
 	unsigned int max_height;
+	char *codecs;
 
 	void *data;
 };
