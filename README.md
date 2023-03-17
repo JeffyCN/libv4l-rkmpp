@@ -21,20 +21,35 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 ## Quick Start
 
 1. Install libv4l-rkmpp.so into /usr/lib/libv4l/plugins/
-2. Create dummy V4L2 device files for chromium VDA/VEA:
+
+2. Create dummy V4L2 device files for chromium VDA/VEA in boot service:
 ```
    # echo dec > /dev/video-dec0
    # chmod 666 /dev/video-dec0
    # echo enc > /dev/video-enc0
    # chmod 666 /dev/video-enc0
 ```
-3. Run chromium's [VDA/VEA](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/media/gpu/vdatest_usage.md)  
+
+3. Configure codec capabilities
+
+   The codec capabilities (depends on chip spec) are configurable in device files:
+```
+   # cat /dev/video-dec0
+   log-fps=1
+   log-level=2
+   type=dec
+   codecs=VP8:VP9:H.264:H.265:AV1
+   max-height=1920
+   max-width=1080
+```
+
+4. Run chromium's [VDA/VEA](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/media/gpu/vdatest_usage.md)  
 
    The VDA's thumbnail tests would fail, which is harmless since we are not in [the md5 checksum list](https://cs.chromium.org/chromium/src/media/test/data/test-25fps.h264.json)  
 
    The VEA's CacheLineUnalignedInputTest test might crash, which is due to VEA buffer managing issue.  
 
-4. Run with chromium browser:  
+5. Run with chromium browser:  
 ```
    export XDG_RUNTIME_DIR=/run/user/0
    chromium --no-sandbox --gpu-sandbox-start-early --ignore-gpu-blacklist
