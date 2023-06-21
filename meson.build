@@ -2,7 +2,7 @@ project(
   'libv4l-rkmpp',
   'c',
   version : '1.5.1',
-  meson_version : '>=0.49.0',
+  meson_version : '>=0.50.0',
   default_options : ['buildtype=release', 'warning_level=3'],
 )
 
