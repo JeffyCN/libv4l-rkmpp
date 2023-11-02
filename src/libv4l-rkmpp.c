@@ -886,9 +886,10 @@ static void plugin_close(void *dev_ops_priv)
 		free(ctx->codecs);
 
 	close(ctx->eventfd);
-	free(ctx);
 
 	LEAVE();
+
+	free(ctx);
 }
 
 static int plugin_ioctl(void *dev_ops_priv, int fd,
