@@ -34,6 +34,7 @@
  * @valid:		Data is valid.
  * @dirty:		Data is dirty(have not applied to mpp).
  * @event:		Pending V4L2 src_change event.
+ * @mpp_format:		MPP frame format.
  * @width:		Video width.
  * @height:		Video height.
  * @hor_stride:		Video horizontal stride.
@@ -45,6 +46,7 @@ struct rkmpp_video_info {
 	bool dirty;
 	bool event;
 
+	MppFrameFormat mpp_format;
 	uint32_t width;
 	uint32_t height;
 	uint32_t hor_stride;

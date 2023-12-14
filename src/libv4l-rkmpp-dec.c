@@ -204,6 +204,7 @@ static void rkmpp_apply_info_change(struct rkmpp_dec_context *dec,
 	memcpy((void *)&video_info,
 	       (void *)&dec->video_info, sizeof(video_info));
 
+	video_info.mpp_format = mpp_frame_get_fmt(frame);
 	video_info.width = mpp_frame_get_width(frame);
 	video_info.height = mpp_frame_get_height(frame);
 	video_info.hor_stride = mpp_frame_get_hor_stride(frame);
@@ -225,23 +226,26 @@ static void rkmpp_apply_info_change(struct rkmpp_dec_context *dec,
 	dec->video_info.dirty = true;
 	dec->video_info.event = dec->event_subscribed;
 
+	LOGV(1, "frame info changed: %dx%d(%dx%d:%d), mpp format(%d)\n",
+	     dec->video_info.width, dec->video_info.height,
+	     dec->video_info.hor_stride,
+	     dec->video_info.ver_stride,
+	     dec->video_info.size, dec->video_info.mpp_format);
+
 	/*
 	 * Use ver_stride as new height, the visible rect would be returned
 	 * in g_selection.
 	 */
+	ctx->capture.format.num_planes = 1;
 	ctx->capture.format.width = dec->video_info.hor_stride;
 	ctx->capture.format.height = dec->video_info.ver_stride;
-	ctx->capture.format.num_planes = 1;
 	ctx->capture.format.plane_fmt[0].bytesperline =
 		dec->video_info.hor_stride;
 	ctx->capture.format.plane_fmt[0].sizeimage =
 		dec->video_info.size;
 
-	LOGV(1, "frame info changed: %dx%d(%dx%d:%d)\n",
-	     dec->video_info.width, dec->video_info.height,
-	     dec->video_info.hor_stride,
-	     dec->video_info.ver_stride,
-	     dec->video_info.size);
+	assert(dec->video_info.mpp_format == MPP_FMT_YUV420SP);
+	ctx->capture.format.pixelformat = V4L2_PIX_FMT_NV12;
 
 	LEAVE();
 }
@@ -619,7 +623,8 @@ static int rkmpp_dec_g_selection(struct rkmpp_dec_context *dec,
 
 	ENTER();
 
-	if (selection->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
+	if ((selection->type != V4L2_BUF_TYPE_VIDEO_CAPTURE &&
+	     selection->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) ||
 	    selection->target != V4L2_SEL_TGT_COMPOSE) {
 		LOGE("invalid type or target\n");
 		RETURN_ERR(EINVAL, -1);
@@ -680,8 +685,8 @@ static int rkmpp_dec_g_ctrl(struct rkmpp_dec_context *dec,
 		RETURN_ERR(EINVAL, -1);
 	}
 
-	/* The chromium would try to require at least 5 extra buffers */
-	ctrl->value -= 5;
+	/* The chromium would try to require at least 2 extra buffers */
+	ctrl->value -= 2;
 
 	LEAVE();
 	return 0;

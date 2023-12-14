@@ -279,6 +279,12 @@ int rkmpp_try_fmt(struct rkmpp_context *ctx, struct v4l2_format *f)
 
 		pix_fmt_mp->num_planes = fmt->num_planes;
 		pix_fmt_mp->plane_fmt[0].bytesperline = 0;
+	} else if (ctx->is_decoder && ctx->capture.format.pixelformat) {
+		struct rkmpp_buf_queue *queue = &ctx->capture;
+		assert(queue->format.pixelformat == pix_fmt_mp->pixelformat);
+
+		/* Use the decoded video format info */
+		*pix_fmt_mp = queue->format;
 	} else {
 		struct rkmpp_buf_queue *queue =
 			ctx->is_decoder ? &ctx->output : &ctx->capture;

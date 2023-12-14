@@ -17,7 +17,7 @@ Homepage: https://github.com/JeffyCN/libv4l-rkmpp
 Package: libv4l-rkmpp
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: A rockchip-mpp V4L2 wrapper plugin for chromium V4L2 VDA
- A V4L2 plugin that wraps rockchip-mpp for the chromium's V4L2 VDA.
+Description: A rockchip-mpp V4L2 wrapper plugin for chromium video dec and enc
+ A V4L2 plugin that wraps rockchip-mpp for the chromium's V4L2 video decoder and VEA.
  .
  The original idea comes from v4l-gst.
