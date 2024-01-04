@@ -37,6 +37,8 @@
  * @type:		Encoder format type.
  * @needs_header:	Needs to process header.
  * @header:		Header packet.
+ * @header_mode:	MPP header mode.
+ * @rc_mode:		MPP rate-control mode.
  * @mb_rc:		V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE.
  * @rc_reaction_coeff:	V4L2_CID_MPEG_MFC51_VIDEO_RC_REACTION_COEFF.
  * @gop_size:		V4L2_CID_MPEG_VIDEO_GOP_SIZE.
@@ -76,6 +78,8 @@ struct rkmpp_enc_context {
 	bool needs_header;
 	MppPacket header;
 	MppEncHeaderMode header_mode;
+
+	MppEncRcMode rc_mode;
 
 	bool mb_rc;
 	int rc_reaction_coeff;
