@@ -25,6 +25,15 @@
 #define V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR (V4L2_CID_MPEG_BASE + 644)
 #endif
 
+#ifndef V4L2_CID_MPEG_VIDEO_BITRATE_MODE
+#define V4L2_CID_MPEG_VIDEO_BITRATE_MODE	(V4L2_CID_MPEG_BASE+206)
+enum v4l2_mpeg_video_bitrate_mode {
+        V4L2_MPEG_VIDEO_BITRATE_MODE_VBR = 0,
+        V4L2_MPEG_VIDEO_BITRATE_MODE_CBR = 1,
+        V4L2_MPEG_VIDEO_BITRATE_MODE_CQ  = 2,
+};
+#endif
+
 #define RKMPP_ENC_POLL_TIMEOUT_MS	100
 
 static struct rkmpp_fmt rkmpp_enc_fmts[] = {
@@ -519,7 +528,9 @@ static int rkmpp_enc_apply_rc_cfg(struct rkmpp_enc_context *enc)
 		goto err;
 	}
 
-	if (enc->mb_rc) {
+	if (enc->rc_mode != MPP_ENC_RC_MODE_BUTT) {
+		rc_mode = enc->rc_mode;
+	} else if (enc->mb_rc) {
 		if (enc->rc_reaction_coeff < 10)
 			/* The "tight" bitrate mode */
 			rc_mode = MPP_ENC_RC_MODE_CBR;
@@ -847,9 +858,39 @@ static int rkmpp_enc_queryctrl(struct rkmpp_enc_context *enc,
 	switch (query_ctrl->id) {
 	case V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR:
 		break;
+	case V4L2_CID_MPEG_VIDEO_BITRATE_MODE:
+		query_ctrl->minimum = V4L2_MPEG_VIDEO_BITRATE_MODE_VBR;
+		query_ctrl->maximum = V4L2_MPEG_VIDEO_BITRATE_MODE_CBR;
+		break;
 	/* TODO: fill info for other supported ctrls */
 	default:
 		LOGV(1, "unsupported ctrl: %x\n", query_ctrl->id);
+		RETURN_ERR(EINVAL, -1);
+	}
+
+	LEAVE();
+	return 0;
+}
+
+static int rkmpp_enc_querymenu(struct rkmpp_enc_context *enc,
+			       struct v4l2_querymenu *query_menu)
+{
+	struct rkmpp_context *ctx = enc->ctx;
+
+	ENTER();
+
+	if (query_menu->id != V4L2_CID_MPEG_VIDEO_BITRATE_MODE) {
+		LOGV(1, "unsupported menu: %x\n", query_menu->id);
+		RETURN_ERR(EINVAL, -1);
+	}
+
+	switch (query_menu->index) {
+	case V4L2_MPEG_VIDEO_BITRATE_MODE_VBR:
+		break;
+	case V4L2_MPEG_VIDEO_BITRATE_MODE_CBR:
+		break;
+	default:
+		LOGV(1, "unsupported bitrate mode: %x\n", query_menu->index);
 		RETURN_ERR(EINVAL, -1);
 	}
 
@@ -880,7 +921,8 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 	ENTER();
 
-	if (ext_ctrls->ctrl_class != V4L2_CTRL_CLASS_MPEG)
+	if (ext_ctrls->ctrl_class != V4L2_CTRL_CLASS_MPEG &&
+	    ext_ctrls->ctrl_class != V4L2_CID_MPEG_CLASS)
 		RETURN_ERR(EINVAL, -1);
 
 	for (i = 0; i < ext_ctrls->count; i++) {
@@ -929,6 +971,27 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 				RETURN_ERR(errno, -1);
 			}
 			break;
+		case V4L2_CID_MPEG_VIDEO_BITRATE_MODE:
+			switch (ctrl->value) {
+			case V4L2_MPEG_VIDEO_BITRATE_MODE_VBR:
+				enc->rc_mode = MPP_ENC_RC_MODE_VBR;
+				break;
+			case V4L2_MPEG_VIDEO_BITRATE_MODE_CBR:
+				enc->rc_mode = MPP_ENC_RC_MODE_CBR;
+				break;
+			default:
+				LOGV(1, "unsupported bitrate mode: %x\n",
+				     ctrl->value);
+				RETURN_ERR(errno, -1);
+			}
+
+			LOGV(3, "bitrate mode: %d\n", ctrl->value);
+
+			if (enc->mpp_streaming &&
+			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
+				LOGE("failed to apply bitrate mode\n");
+				RETURN_ERR(errno, -1);
+			}
 		case V4L2_CID_MPEG_VIDEO_BITRATE:
 			enc->bitrate = ctrl->value;
 			LOGV(3, "bitrate: %d\n", enc->bitrate);
@@ -1110,6 +1173,7 @@ void *rkmpp_enc_init(struct rkmpp_context *ctx)
 
 	enc->max_qp = enc->min_qp = 0;
 
+	enc->rc_mode = MPP_ENC_RC_MODE_BUTT;
 	enc->mb_rc = true;
 	enc->rc_reaction_coeff = 1;
 	enc->gop_size = 30;
@@ -1213,6 +1277,9 @@ int rkmpp_enc_ioctl(void *data, unsigned long cmd, void *arg)
 		break;
 	case VIDIOC_QUERYCTRL:
 		ret = rkmpp_enc_queryctrl(enc, arg);
+		break;
+	case VIDIOC_QUERYMENU:
+		ret = rkmpp_enc_querymenu(enc, arg);
 		break;
 	case VIDIOC_S_EXT_CTRLS:
 		ret = rkmpp_enc_s_ext_ctrls(enc, arg);
