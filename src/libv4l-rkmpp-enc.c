@@ -281,11 +281,13 @@ static void *encoder_thread_fn(void *data)
 			}
 		}
 
+		ctx->mpp_produced = true;
+
 		pthread_mutex_unlock(&ctx->worker_mutex);
 
 		pthread_mutex_lock(&ctx->ioctl_mutex);
 
-		if (!ctx->mpp_streaming)
+		if (!ctx->mpp_streaming || !ctx->mpp_produced)
 			goto next_locked;
 
 		pthread_mutex_lock(&ctx->capture.queue_mutex);

@@ -703,6 +703,7 @@ void rkmpp_streamon(struct rkmpp_context *ctx)
 
 	/* Notify the worker thread to start streaming */
 	pthread_mutex_lock(&ctx->worker_mutex);
+	ctx->mpp_produced = false;
 	ctx->mpp_streaming = true;
 	pthread_cond_signal(&ctx->worker_cond);
 	pthread_mutex_unlock(&ctx->worker_mutex);

@@ -289,18 +289,21 @@ static void *decoder_thread_fn(void *data)
 		frame = NULL;
 		ret = ctx->mpi->decode_get_frame(ctx->mpp, &frame);
 
-		pthread_mutex_unlock(&ctx->worker_mutex);
-
 		if (ret != MPP_OK || !frame) {
 			if (ret != MPP_ERR_TIMEOUT)
 				LOGE("failed to get frame\n");
 
+			pthread_mutex_unlock(&ctx->worker_mutex);
 			goto next;
 		}
 
+		ctx->mpp_produced = true;
+
+		pthread_mutex_unlock(&ctx->worker_mutex);
+
 		pthread_mutex_lock(&ctx->ioctl_mutex);
 
-		if (!ctx->mpp_streaming)
+		if (!ctx->mpp_streaming || !ctx->mpp_produced)
 			goto next_locked;
 
 		/* Handle info change frame */

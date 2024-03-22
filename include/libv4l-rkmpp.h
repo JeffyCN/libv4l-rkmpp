@@ -221,6 +221,7 @@ struct rkmpp_buf_queue {
  * @mpp:		Handler of mpp context.
  * @mpi:		Handler of mpp api.
  * @mpp_streaming:	The mpp is streaming.
+ * @mpp_produced:	The mpp has produced packets or frames.
  * @output:		Output queue.
  * @capture:		Capture queue.
  * @ioctl_mutex:	Mutex for ioctl.
@@ -243,6 +244,7 @@ struct rkmpp_context {
 	MppApi *mpi;
 
 	bool mpp_streaming;
+	bool mpp_produced;
 
 	struct rkmpp_buf_queue output;
 	struct rkmpp_buf_queue capture;
