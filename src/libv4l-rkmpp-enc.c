@@ -28,9 +28,9 @@
 #ifndef V4L2_CID_MPEG_VIDEO_BITRATE_MODE
 #define V4L2_CID_MPEG_VIDEO_BITRATE_MODE	(V4L2_CID_MPEG_BASE+206)
 enum v4l2_mpeg_video_bitrate_mode {
-        V4L2_MPEG_VIDEO_BITRATE_MODE_VBR = 0,
-        V4L2_MPEG_VIDEO_BITRATE_MODE_CBR = 1,
-        V4L2_MPEG_VIDEO_BITRATE_MODE_CQ  = 2,
+	V4L2_MPEG_VIDEO_BITRATE_MODE_VBR = 0,
+	V4L2_MPEG_VIDEO_BITRATE_MODE_CBR = 1,
+	V4L2_MPEG_VIDEO_BITRATE_MODE_CQ  = 2,
 };
 #endif
 
@@ -240,11 +240,11 @@ static void *encoder_thread_fn(void *data)
 	LOGV(1, "ctx(%p): starting encoder thread\n", (void *)ctx);
 
 	while (1) {
-		pthread_mutex_lock(&enc->encoder_mutex);
+		pthread_mutex_lock(&ctx->worker_mutex);
 
-		while (!enc->mpp_streaming)
-			pthread_cond_wait(&enc->encoder_cond,
-					  &enc->encoder_mutex);
+		while (!ctx->mpp_streaming)
+			pthread_cond_wait(&ctx->worker_cond,
+					  &ctx->worker_mutex);
 
 		/* Store header before 1st frame */
 		if (enc->needs_header && !enc->header)
@@ -253,8 +253,8 @@ static void *encoder_thread_fn(void *data)
 		/* Wait for buffers */
 		while (TAILQ_EMPTY(&ctx->capture.pending_buffers) ||
 		       TAILQ_EMPTY(&ctx->output.pending_buffers))
-			pthread_cond_wait(&enc->encoder_cond,
-					  &enc->encoder_mutex);
+			pthread_cond_wait(&ctx->worker_cond,
+					  &ctx->worker_mutex);
 
 		if (enc->type == H264 && enc->needs_header &&
 		    enc->h264.separate_header) {
@@ -263,12 +263,12 @@ static void *encoder_thread_fn(void *data)
 				rkmpp_send_header(enc);
 				enc->needs_header = false;
 			}
-			pthread_mutex_unlock(&enc->encoder_mutex);
+			pthread_mutex_unlock(&ctx->worker_mutex);
 			goto next;
 		}
 
 		if (rkmpp_put_frame(enc) < 0) {
-			pthread_mutex_unlock(&enc->encoder_mutex);
+			pthread_mutex_unlock(&ctx->worker_mutex);
 			continue;
 		}
 
@@ -281,11 +281,11 @@ static void *encoder_thread_fn(void *data)
 			}
 		}
 
-		pthread_mutex_unlock(&enc->encoder_mutex);
+		pthread_mutex_unlock(&ctx->worker_mutex);
 
 		pthread_mutex_lock(&ctx->ioctl_mutex);
 
-		if (!enc->mpp_streaming)
+		if (!ctx->mpp_streaming)
 			goto next_locked;
 
 		pthread_mutex_lock(&ctx->capture.queue_mutex);
@@ -371,14 +371,14 @@ static int rkmpp_enc_qbuf(struct rkmpp_enc_context *enc,
 
 	ENTER();
 
-	ret = rkmpp_qbuf(enc->ctx, buffer);
+	ret = rkmpp_qbuf(ctx, buffer);
 	if (ret < 0)
 		RETURN_ERR(errno, -1);
 
-	/* Notify new buffer */
-	pthread_mutex_lock(&enc->encoder_mutex);
-	pthread_cond_signal(&enc->encoder_cond);
-	pthread_mutex_unlock(&enc->encoder_mutex);
+	/* Wakeup worker thread */
+	pthread_mutex_lock(&ctx->worker_mutex);
+	pthread_cond_signal(&ctx->worker_cond);
+	pthread_mutex_unlock(&ctx->worker_mutex);
 
 	LEAVE();
 	return ret;
@@ -624,7 +624,7 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 	LOGV(1, "queue(%d) start streaming\n", *type);
 
 	/* Start mpp streaming only when all queues started */
-	if (enc->mpp_streaming ||
+	if (ctx->mpp_streaming ||
 	    !ctx->output.streaming || !ctx->capture.streaming)
 		goto out;
 
@@ -639,7 +639,7 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 		RETURN_ERR(errno, -1);
 	}
 
-	LOGV(1, "mpp start streaming\n");
+	LOGV(1, "mpp initializing\n");
 
 	ret = mpp_create(&ctx->mpp, &ctx->mpi);
 	if (ret != MPP_OK) {
@@ -696,11 +696,7 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 		goto err_destroy_mpp;
 	}
 
-	/* Notify encoder thread to start streaming */
-	pthread_mutex_lock(&enc->encoder_mutex);
-	enc->mpp_streaming = true;
-	pthread_cond_signal(&enc->encoder_cond);
-	pthread_mutex_unlock(&enc->encoder_mutex);
+	rkmpp_streamon(ctx);
 out:
 	LEAVE();
 	return 0;
@@ -716,9 +712,7 @@ static int rkmpp_enc_streamoff(struct rkmpp_enc_context *enc,
 			       enum v4l2_buf_type *type)
 {
 	struct rkmpp_context *ctx = enc->ctx;
-	struct rkmpp_buffer *rkmpp_buffer;
 	struct rkmpp_buf_queue *queue;
-	unsigned int i;
 
 	ENTER();
 
@@ -728,57 +722,15 @@ static int rkmpp_enc_streamoff(struct rkmpp_enc_context *enc,
 
 	if (!queue->streaming)
 		goto out;
-	queue->streaming = false;
 
 	LOGV(1, "queue(%d) stop streaming\n", *type);
 
-	pthread_mutex_lock(&enc->encoder_mutex);
+	rkmpp_reset_queue(ctx, queue);
 
-	/* Hand over all buffers to userspace */
-	pthread_mutex_lock(&queue->queue_mutex);
-	TAILQ_INIT(&queue->avail_buffers);
-	TAILQ_INIT(&queue->pending_buffers);
-	pthread_mutex_unlock(&queue->queue_mutex);
-
-	/* Update poll event after avail list changed */
-	rkmpp_update_poll_event(ctx);
-
-	/* Reset buffer states */
-	for (i = 0; i < queue->num_buffers; i++) {
-		rkmpp_buffer = &queue->buffers[i];
-
-		if (rkmpp_buffer_error(rkmpp_buffer))
-			rkmpp_buffer_clr_error(rkmpp_buffer);
-
-		if (!rkmpp_buffer_locked(rkmpp_buffer)) {
-			mpp_buffer_inc_ref(rkmpp_buffer->rkmpp_buf);
-			rkmpp_buffer_set_locked(rkmpp_buffer);
-		}
-
-		if (rkmpp_buffer_queued(rkmpp_buffer))
-			rkmpp_buffer_clr_queued(rkmpp_buffer);
-
-		if (rkmpp_buffer_pending(rkmpp_buffer))
-			rkmpp_buffer_clr_pending(rkmpp_buffer);
-
-		if (rkmpp_buffer_available(rkmpp_buffer))
-			rkmpp_buffer_clr_available(rkmpp_buffer);
-	}
+	pthread_mutex_lock(&ctx->worker_mutex);
 
 	/* Stop mpp streaming when any queue stopped */
-	if (!enc->mpp_streaming) {
-		pthread_mutex_unlock(&enc->encoder_mutex);
-		goto out;
-	}
-
-	LOGV(1, "mpp stop streaming\n");
-
-	enc->mpp_streaming = false;
-
-	pthread_mutex_unlock(&enc->encoder_mutex);
-
-	ctx->mpi->reset(ctx->mpp);
-	mpp_destroy(ctx->mpp);
+	rkmpp_streamoff(ctx);
 out:
 	LEAVE();
 	return 0;
@@ -838,7 +790,7 @@ static int rkmpp_enc_s_parm(struct rkmpp_enc_context *enc,
 	     parms->parm.output.timeperframe.numerator,
 	     parms->parm.output.timeperframe.denominator);
 
-	if (enc->mpp_streaming &&
+	if (ctx->mpp_streaming &&
 	    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 		LOGE("failed to apply framerate\n");
 		RETURN_ERR(errno, -1);
@@ -954,7 +906,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 			LOGV(3, "header mode: %d\n", ctrl->value);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply header mode\n");
 				RETURN_ERR(errno, -1);
@@ -965,7 +917,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			LOGV(3, "request keyframes: %d\n",
 			     enc->keyframe_requested);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to request keyframe\n");
 				RETURN_ERR(errno, -1);
@@ -987,7 +939,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 			LOGV(3, "bitrate mode: %d\n", ctrl->value);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply bitrate mode\n");
 				RETURN_ERR(errno, -1);
@@ -997,7 +949,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->bitrate = ctrl->value;
 			LOGV(3, "bitrate: %d\n", enc->bitrate);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply bitrate\n");
 				RETURN_ERR(errno, -1);
@@ -1019,7 +971,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->max_qp = ctrl->value;
 			LOGV(3, "h264 max qp: %d\n", enc->max_qp);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
 				LOGE("failed to apply h264 max qp\n");
 				RETURN_ERR(errno, -1);
@@ -1029,7 +981,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->min_qp = ctrl->value;
 			LOGV(3, "h264 min qp: %d\n", enc->min_qp);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
 				LOGE("failed to apply h264 min qp\n");
 				RETURN_ERR(errno, -1);
@@ -1046,7 +998,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 			LOGV(3, "h264 profile: %d\n", enc->h264.profile);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
 				LOGE("failed to apply h264 profile\n");
 				RETURN_ERR(errno, -1);
@@ -1056,7 +1008,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->h264.level = ctrl->value;
 			LOGV(3, "h264 level: %d\n", enc->h264.level);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
 				LOGE("failed to apply h264 level\n");
 				RETURN_ERR(errno, -1);
@@ -1074,7 +1026,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->max_qp = ctrl->value;
 			LOGV(3, "vpx max qp: %d\n", enc->max_qp);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_vp8_cfg(enc) < 0) {
 				LOGE("failed to apply vpx max qp\n");
 				RETURN_ERR(errno, -1);
@@ -1084,7 +1036,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->min_qp = ctrl->value;
 			LOGV(3, "vpx min qp: %d\n", enc->min_qp);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_vp8_cfg(enc) < 0) {
 				LOGE("failed to apply vpx min qp\n");
 				RETURN_ERR(errno, -1);
@@ -1094,7 +1046,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->mb_rc = !!ctrl->value;
 			LOGV(3, "mb rc: %d\n", enc->mb_rc);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply mb bitrate control\n");
 				RETURN_ERR(errno, -1);
@@ -1104,7 +1056,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->gop_size = ctrl->value;
 			LOGV(3, "gop size: %d\n", enc->gop_size);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply gop size\n");
 				RETURN_ERR(errno, -1);
@@ -1115,7 +1067,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			LOGV(3, "rc reaction coeff: %d\n",
 			     enc->rc_reaction_coeff);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply rc reaction coeff\n");
 				RETURN_ERR(errno, -1);
@@ -1125,7 +1077,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->fixed_bitrate = !!ctrl->value;
 			LOGV(3, "fixed bitrate: %d\n", enc->fixed_bitrate);
 
-			if (enc->mpp_streaming &&
+			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply fixed bitrate\n");
 				RETURN_ERR(errno, -1);
@@ -1143,7 +1095,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 bool rkmpp_enc_has_event(void *data)
 {
-  (void)data; /* unused */
+	(void)data; /* unused */
 	return false;
 }
 
@@ -1184,10 +1136,7 @@ void *rkmpp_enc_init(struct rkmpp_context *ctx)
 	enc->denominator = 1;
 	enc->numerator = 30;
 
-	pthread_cond_init(&enc->encoder_cond, NULL);
-	pthread_mutex_init(&enc->encoder_mutex, NULL);
-	pthread_create(&enc->encoder_thread, NULL,
-		       encoder_thread_fn, enc);
+	pthread_create(&ctx->worker_thread, NULL, encoder_thread_fn, enc);
 
 	LEAVE();
 	return enc;
@@ -1200,18 +1149,8 @@ void rkmpp_enc_deinit(void *data)
 
 	ENTER();
 
-	if (enc->encoder_thread) {
-		pthread_cancel(enc->encoder_thread);
-		pthread_join(enc->encoder_thread, NULL);
-	}
-
 	if (enc->header)
 		mpp_packet_deinit(&enc->header);
-
-	if (enc->mpp_streaming) {
-		ctx->mpi->reset(ctx->mpp);
-		mpp_destroy(ctx->mpp);
-	}
 
 	free(enc);
 

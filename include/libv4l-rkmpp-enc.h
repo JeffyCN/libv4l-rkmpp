@@ -31,7 +31,6 @@
 /**
  * struct rkmpp_enc_context - Context private data for encoder
  * @ctx:		Common context data.
- * @mpp_streaming:	The mpp is streaming.
  * @h264:		Enc config for H264.
  * @vp8:		Enc config for VP8.
  * @type:		Encoder format type.
@@ -47,15 +46,14 @@
  * @denominator:	Target denominator.
  * @numerator:		Target numerator.
  * @keyframe_requested:	Number of keyframes requested.
- * @encoder_thread:	Handler of the encoder thread.
- * @encoder_cond:	Condition variable for streaming flag.
- * @encoder_mutex:	Mutex for streaming flag and buffers.
+ * @width:		Video width.
+ * @height:		Video height.
+ * @hstride:		Video hstride.
+ * @vstride:		Video vstride.
  */
 struct rkmpp_enc_context {
 	struct rkmpp_context *ctx;
 	struct v4l2_rect crop;
-
-	bool mpp_streaming;
 
 	struct {
 		int profile;
@@ -96,10 +94,6 @@ struct rkmpp_enc_context {
 	int height;
 	int hstride;
 	int vstride;
-
-	pthread_t encoder_thread;
-	pthread_cond_t encoder_cond;
-	pthread_mutex_t encoder_mutex;
 };
 
 bool rkmpp_enc_has_event(void *data);

@@ -330,6 +330,12 @@ int rkmpp_from_v4l2_buffer(struct rkmpp_context *ctx,
 		(uint64_t)buffer->timestamp.tv_sec * 1000000 +
 		buffer->timestamp.tv_usec;
 
+	/* Clear special flags */
+	if (rkmpp_buffer_keyframe(rkmpp_buffer))
+		rkmpp_buffer_clr_keyframe(rkmpp_buffer);
+	if (rkmpp_buffer_error(rkmpp_buffer))
+		rkmpp_buffer_clr_error(rkmpp_buffer);
+
 	LEAVE();
 	return 0;
 }

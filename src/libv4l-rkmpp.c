@@ -108,6 +108,53 @@ static void rkmpp_destroy_buffers(struct rkmpp_buf_queue *queue)
 	queue->num_buffers = 0;
 }
 
+void rkmpp_reset_queue(struct rkmpp_context *ctx,
+		       struct rkmpp_buf_queue *queue)
+{
+	struct rkmpp_buffer *rkmpp_buffer;
+	unsigned int i;
+
+	ENTER();
+
+	queue->streaming = false;
+
+	/* Hand over all buffers to userspace */
+	pthread_mutex_lock(&queue->queue_mutex);
+	TAILQ_INIT(&queue->avail_buffers);
+	TAILQ_INIT(&queue->pending_buffers);
+	pthread_mutex_unlock(&queue->queue_mutex);
+
+	/* Update poll event after avail list changed */
+	rkmpp_update_poll_event(ctx);
+
+	/* Reset buffer states */
+	for (i = 0; i < queue->num_buffers; i++) {
+		rkmpp_buffer = &queue->buffers[i];
+
+		if (rkmpp_buffer_error(rkmpp_buffer))
+			rkmpp_buffer_clr_error(rkmpp_buffer);
+
+		if (!rkmpp_buffer_locked(rkmpp_buffer)) {
+			mpp_buffer_inc_ref(rkmpp_buffer->rkmpp_buf);
+			rkmpp_buffer_set_locked(rkmpp_buffer);
+		}
+
+		if (rkmpp_buffer_queued(rkmpp_buffer))
+			rkmpp_buffer_clr_queued(rkmpp_buffer);
+
+		if (rkmpp_buffer_pending(rkmpp_buffer))
+			rkmpp_buffer_clr_pending(rkmpp_buffer);
+
+		if (rkmpp_buffer_available(rkmpp_buffer))
+			rkmpp_buffer_clr_available(rkmpp_buffer);
+
+		if (rkmpp_buffer_keyframe(rkmpp_buffer))
+			rkmpp_buffer_clr_keyframe(rkmpp_buffer);
+	}
+
+	LEAVE();
+}
+
 static const
 struct rkmpp_fmt *rkmpp_find_fmt(struct rkmpp_context *ctx,
 				 uint32_t fourcc)
@@ -619,7 +666,6 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 
 	pthread_mutex_lock(&queue->queue_mutex);
 	rkmpp_buffer = TAILQ_FIRST(&queue->avail_buffers);
-	TAILQ_REMOVE(&queue->avail_buffers, rkmpp_buffer, entry);
 	pthread_mutex_unlock(&queue->queue_mutex);
 
 	/* Update poll event after avail list changed */
@@ -631,11 +677,11 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 		RETURN_ERR(EINVAL, -1);
 	}
 
-	if (rkmpp_buffer_keyframe(rkmpp_buffer))
-		rkmpp_buffer_clr_keyframe(rkmpp_buffer);
-	if (rkmpp_buffer_error(rkmpp_buffer))
-		rkmpp_buffer_clr_error(rkmpp_buffer);
+	pthread_mutex_lock(&queue->queue_mutex);
 	rkmpp_buffer_clr_available(rkmpp_buffer);
+	TAILQ_REMOVE(&queue->avail_buffers, rkmpp_buffer, entry);
+	pthread_mutex_unlock(&queue->queue_mutex);
+
 	rkmpp_buffer_clr_queued(rkmpp_buffer);
 
 	LOGV(3, "dequeue buffer: %d(%" PRIu64 "), size: %d, type: %d\n",
@@ -644,6 +690,43 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 
 	LEAVE();
 	return 0;
+}
+
+void rkmpp_streamon(struct rkmpp_context *ctx)
+{
+	if (ctx->mpp_streaming)
+		return;
+
+	ENTER();
+
+	LOGV(1, "mpp start streaming\n");
+
+	/* Notify the worker thread to start streaming */
+	pthread_mutex_lock(&ctx->worker_mutex);
+	ctx->mpp_streaming = true;
+	pthread_cond_signal(&ctx->worker_cond);
+	pthread_mutex_unlock(&ctx->worker_mutex);
+
+	LEAVE();
+}
+
+void rkmpp_streamoff(struct rkmpp_context *ctx)
+{
+	if (!ctx->mpp_streaming)
+		return;
+
+	ENTER();
+
+	LOGV(1, "mpp stop streaming\n");
+
+	pthread_mutex_lock(&ctx->worker_mutex);
+	ctx->mpp_streaming = false;
+
+	ctx->mpi->reset(ctx->mpp);
+	mpp_destroy(ctx->mpp);
+	pthread_mutex_unlock(&ctx->worker_mutex);
+
+	LEAVE();
 }
 
 int rkmpp_update_poll_event(struct rkmpp_context *ctx)
@@ -806,6 +889,8 @@ static void *plugin_init(int fd)
 	pthread_mutex_init(&ctx->ioctl_mutex, NULL);
 	pthread_mutex_init(&ctx->output.queue_mutex, NULL);
 	pthread_mutex_init(&ctx->capture.queue_mutex, NULL);
+	pthread_cond_init(&ctx->worker_cond, NULL);
+	pthread_mutex_init(&ctx->worker_mutex, NULL);
 
 	ret = mpp_buffer_group_get_internal(&ctx->output.internal_group,
 					    MPP_BUFFER_TYPE_DRM);
@@ -867,10 +952,20 @@ static void plugin_close(void *dev_ops_priv)
 
 	LOGV(1, "ctx(%p): closing plugin\n", (void *)ctx);
 
+	if (ctx->worker_thread) {
+		pthread_cancel(ctx->worker_thread);
+		pthread_join(ctx->worker_thread, NULL);
+	}
+
 	if (ctx->is_decoder)
 		rkmpp_dec_deinit(ctx->data);
 	else
 		rkmpp_enc_deinit(ctx->data);
+
+	if (ctx->mpp_streaming) {
+		ctx->mpi->reset(ctx->mpp);
+		mpp_destroy(ctx->mpp);
+	}
 
 	rkmpp_destroy_buffers(&ctx->output);
 

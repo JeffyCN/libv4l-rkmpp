@@ -126,6 +126,7 @@ struct rkmpp_fmt {
  * @QUEUED:		Buffer been queued.
  * @PENDING:		Buffer is in pending queue.
  * @AVAILABLE:		Buffer is in available queue.
+ * @KEYFRAME:		Buffer is keyframe.
  */
 enum rkmpp_buffer_flag {
 	RKMPP_BUFFER_ERROR	= 1 << 0,
@@ -219,9 +220,13 @@ struct rkmpp_buf_queue {
  * @pending_buffers:	Pending buffers for mpp.
  * @mpp:		Handler of mpp context.
  * @mpi:		Handler of mpp api.
+ * @mpp_streaming:	The mpp is streaming.
  * @output:		Output queue.
  * @capture:		Capture queue.
- * @ioctl_mutex:	Mutex.
+ * @ioctl_mutex:	Mutex for ioctl.
+ * @worker_thread:	Handler of the worker thread.
+ * @worker_cond:	Condition variable for streaming status.
+ * @worker_mutex:	Mutex for streaming status.
  * @frames:		Number of frames reported.
  * @last_fps_time:	The last time to count fps.
  * @data:		Private data.
@@ -237,10 +242,16 @@ struct rkmpp_context {
 	MppCtx mpp;
 	MppApi *mpi;
 
+	bool mpp_streaming;
+
 	struct rkmpp_buf_queue output;
 	struct rkmpp_buf_queue capture;
 
 	pthread_mutex_t ioctl_mutex;
+
+	pthread_t worker_thread;
+	pthread_cond_t worker_cond;
+	pthread_mutex_t worker_mutex;
 
 	uint64_t frames;
 	uint64_t last_fps_time;
@@ -268,6 +279,9 @@ struct rkmpp_buf_queue *rkmpp_get_queue(struct rkmpp_context *ctx,
 		RETURN_ERR(EINVAL, NULL);
 	}
 }
+
+void rkmpp_reset_queue(struct rkmpp_context *ctx,
+		       struct rkmpp_buf_queue *queue);
 
 static inline
 const char* rkmpp_cmd2str(unsigned long cmd)
@@ -417,6 +431,9 @@ int rkmpp_expbuf(struct rkmpp_context *ctx,
 		 struct v4l2_exportbuffer *expbuf);
 int rkmpp_qbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer);
 int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer);
+
+void rkmpp_streamon(struct rkmpp_context *ctx);
+void rkmpp_streamoff(struct rkmpp_context *ctx);
 
 /* Utils */
 

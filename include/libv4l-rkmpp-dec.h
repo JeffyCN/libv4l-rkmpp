@@ -60,10 +60,6 @@ struct rkmpp_video_info {
  * @ctx:		Common context data.
  * @video_info:		Video information.
  * @event_subscribed:	V4L2 event subscribed.
- * @mpp_streaming:	The mpp is streaming.
- * @decoder_thread:	Handler of the decoder thread.
- * @decoder_cond:	Condition variable for streaming flag.
- * @decoder_mutex:	Mutex for streaming flag and buffers.
  */
 struct rkmpp_dec_context {
 	struct rkmpp_context *ctx;
@@ -71,13 +67,7 @@ struct rkmpp_dec_context {
 
 	bool event_subscribed;
 
-	bool mpp_streaming;
-
 	struct rkmpp_buffer *eos_packet;
-
-	pthread_t decoder_thread;
-	pthread_cond_t decoder_cond;
-	pthread_mutex_t decoder_mutex;
 };
 
 bool rkmpp_dec_has_event(void *data);

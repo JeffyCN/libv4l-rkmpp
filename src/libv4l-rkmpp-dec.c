@@ -250,6 +250,19 @@ static void rkmpp_apply_info_change(struct rkmpp_dec_context *dec,
 	LEAVE();
 }
 
+/* Feed available packets and frames to mpp */
+/* NOTE: should be locked with either ioctl_mutex or worker_mutex */
+static void rkmpp_feed_mpp(struct rkmpp_dec_context *dec)
+{
+	struct rkmpp_context *ctx = dec->ctx;
+
+	if (!ctx->mpp_streaming)
+		return;
+
+	rkmpp_put_packets(dec);
+	rkmpp_put_frames(dec);
+}
+
 static void *decoder_thread_fn(void *data)
 {
 	struct rkmpp_dec_context *dec = data;
@@ -265,20 +278,18 @@ static void *decoder_thread_fn(void *data)
 	LOGV(1, "ctx(%p): starting decoder thread\n", (void *)ctx);
 
 	while (1) {
-		pthread_mutex_lock(&dec->decoder_mutex);
+		pthread_mutex_lock(&ctx->worker_mutex);
 
-		while (!dec->mpp_streaming)
-			pthread_cond_wait(&dec->decoder_cond,
-					  &dec->decoder_mutex);
+		while (!ctx->mpp_streaming)
+			pthread_cond_wait(&ctx->worker_cond,
+					  &ctx->worker_mutex);
 
-		/* Feed available packets and frames to mpp */
-		rkmpp_put_packets(dec);
-		rkmpp_put_frames(dec);
+		rkmpp_feed_mpp(dec);
 
 		frame = NULL;
 		ret = ctx->mpi->decode_get_frame(ctx->mpp, &frame);
 
-		pthread_mutex_unlock(&dec->decoder_mutex);
+		pthread_mutex_unlock(&ctx->worker_mutex);
 
 		if (ret != MPP_OK || !frame) {
 			if (ret != MPP_ERR_TIMEOUT)
@@ -289,7 +300,7 @@ static void *decoder_thread_fn(void *data)
 
 		pthread_mutex_lock(&ctx->ioctl_mutex);
 
-		if (!dec->mpp_streaming)
+		if (!ctx->mpp_streaming)
 			goto next_locked;
 
 		/* Handle info change frame */
@@ -464,7 +475,7 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 	LOGV(1, "queue(%d) start streaming\n", *type);
 
 	/* Commit pending info change to mpp */
-	if (dec->mpp_streaming && dec->video_info.dirty &&
+	if (ctx->mpp_streaming && dec->video_info.dirty &&
 	    *type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		LOGV(1, "send info change ready\n");
 
@@ -473,10 +484,10 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 		dec->video_info.dirty = false;
 	}
 
-	if (dec->mpp_streaming)
+	if (ctx->mpp_streaming)
 		goto out;
 
-	LOGV(1, "mpp start streaming\n");
+	LOGV(1, "mpp initializing\n");
 
 	ret = mpp_create(&ctx->mpp, &ctx->mpi);
 	if (ret != MPP_OK) {
@@ -523,11 +534,7 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 		goto err_destroy_mpp;
 	}
 
-	/* Notify decoder thread to start streaming */
-	pthread_mutex_lock(&dec->decoder_mutex);
-	dec->mpp_streaming = true;
-	pthread_cond_signal(&dec->decoder_cond);
-	pthread_mutex_unlock(&dec->decoder_mutex);
+	rkmpp_streamon(ctx);
 out:
 	LEAVE();
 	return 0;
@@ -543,9 +550,7 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 			       enum v4l2_buf_type *type)
 {
 	struct rkmpp_context *ctx = dec->ctx;
-	struct rkmpp_buffer *rkmpp_buffer;
 	struct rkmpp_buf_queue *queue;
-	unsigned int i;
 
 	ENTER();
 
@@ -555,62 +560,19 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 
 	if (!queue->streaming)
 		goto out;
-	queue->streaming = false;
 
 	LOGV(1, "queue(%d) stop streaming\n", *type);
 
-	pthread_mutex_lock(&dec->decoder_mutex);
-
-	/* Hand over all buffers to userspace */
-	pthread_mutex_lock(&queue->queue_mutex);
-	TAILQ_INIT(&queue->avail_buffers);
-	TAILQ_INIT(&queue->pending_buffers);
-	pthread_mutex_unlock(&queue->queue_mutex);
-
-	/* Update poll event after avail list changed */
-	rkmpp_update_poll_event(ctx);
-
-	/* Reset buffer states */
-	for (i = 0; i < queue->num_buffers; i++) {
-		rkmpp_buffer = &queue->buffers[i];
-
-		if (rkmpp_buffer_error(rkmpp_buffer))
-			rkmpp_buffer_clr_error(rkmpp_buffer);
-
-		if (!rkmpp_buffer_locked(rkmpp_buffer)) {
-			mpp_buffer_inc_ref(rkmpp_buffer->rkmpp_buf);
-			rkmpp_buffer_set_locked(rkmpp_buffer);
-		}
-
-		if (rkmpp_buffer_queued(rkmpp_buffer))
-			rkmpp_buffer_clr_queued(rkmpp_buffer);
-
-		if (rkmpp_buffer_pending(rkmpp_buffer))
-			rkmpp_buffer_clr_pending(rkmpp_buffer);
-
-		if (rkmpp_buffer_available(rkmpp_buffer))
-			rkmpp_buffer_clr_available(rkmpp_buffer);
-	}
+	rkmpp_reset_queue(ctx, queue);
 
 	/* Clear eos packet */
 	if (*type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
 		dec->eos_packet = NULL;
 
 	/* Stop mpp streaming only when all queues stopped */
-	if (!dec->mpp_streaming ||
-	    ctx->output.streaming || ctx->capture.streaming) {
-		pthread_mutex_unlock(&dec->decoder_mutex);
-		goto out;
-	}
-
-	LOGV(1, "mpp stop streaming\n");
-
-	dec->mpp_streaming = false;
-
-	pthread_mutex_unlock(&dec->decoder_mutex);
-
-	ctx->mpi->reset(ctx->mpp);
-	mpp_destroy(ctx->mpp);
+	if (ctx->mpp_streaming &&
+	    !ctx->output.streaming && !ctx->capture.streaming)
+		rkmpp_streamoff(ctx);
 out:
 	LEAVE();
 	return 0;
@@ -753,9 +715,7 @@ void *rkmpp_dec_init(struct rkmpp_context *ctx)
 	if (!ctx->max_height)
 		ctx->max_height = MAX_DEC_HEIGHT;
 
-	pthread_cond_init(&dec->decoder_cond, NULL);
-	pthread_mutex_init(&dec->decoder_mutex, NULL);
-	pthread_create(&dec->decoder_thread, NULL,
+	pthread_create(&ctx->worker_thread, NULL,
 		       decoder_thread_fn, dec);
 
 	LEAVE();
@@ -771,16 +731,6 @@ void rkmpp_dec_deinit(void *data)
 	struct rkmpp_context *ctx = dec->ctx;
 
 	ENTER();
-
-	if (dec->decoder_thread) {
-		pthread_cancel(dec->decoder_thread);
-		pthread_join(dec->decoder_thread, NULL);
-	}
-
-	if (dec->mpp_streaming) {
-		ctx->mpi->reset(ctx->mpp);
-		mpp_destroy(ctx->mpp);
-	}
 
 	free(dec);
 
@@ -824,12 +774,7 @@ int rkmpp_dec_ioctl(void *data, unsigned long cmd, void *arg)
 		break;
 	case VIDIOC_QBUF:
 		ret = rkmpp_qbuf(ctx, arg);
-
-		/* Feed available packets and frames to mpp */
-		if (dec->mpp_streaming) {
-			rkmpp_put_packets(dec);
-			rkmpp_put_frames(dec);
-		}
+		rkmpp_feed_mpp(dec);
 		break;
 	case VIDIOC_DQBUF:
 		ret = rkmpp_dqbuf(ctx, arg);
