@@ -111,24 +111,29 @@ static void rkmpp_put_packets(struct rkmpp_dec_context *dec)
 	struct rkmpp_buffer *rkmpp_buffer;
 	MppPacket packet;
 	MPP_RET ret;
-	bool is_eos;
 
 	ENTER();
 
 	pthread_mutex_lock(&ctx->output.queue_mutex);
 	while (!TAILQ_EMPTY(&ctx->output.pending_buffers)) {
+		/* Don't feed packets when pausing */
+		if (ctx->pausing)
+			break;
+
 		rkmpp_buffer = TAILQ_FIRST(&ctx->output.pending_buffers);
+		if (rkmpp_buffer == &ctx->eos_buffer) {
+			LOGV(1, "processing flush request\n");
 
-		mpp_packet_init(&packet,
-				mpp_buffer_get_ptr(rkmpp_buffer->rkmpp_buf),
-				rkmpp_buffer->bytesused);
-		mpp_packet_set_pts(packet, rkmpp_buffer->timestamp);
+			ctx->pausing = true;
 
-		// TODO: Support start/stop decode cmd
-		/* The chromium uses -2 as special flush timestamp. */
-		is_eos = rkmpp_buffer->timestamp == (uint64_t)-2000000;
-		if (is_eos)
+			mpp_packet_init(&packet, NULL, 0);
 			mpp_packet_set_eos(packet);
+		} else {
+			mpp_packet_init(&packet,
+					mpp_buffer_get_ptr(rkmpp_buffer->rkmpp_buf),
+					rkmpp_buffer->bytesused);
+			mpp_packet_set_pts(packet, rkmpp_buffer->timestamp);
+		}
 
 		ret = ctx->mpi->decode_put_packet(ctx->mpp, packet);
 		mpp_packet_deinit(&packet);
@@ -140,13 +145,9 @@ static void rkmpp_put_packets(struct rkmpp_dec_context *dec)
 			     rkmpp_buffer, entry);
 		rkmpp_buffer_clr_pending(rkmpp_buffer);
 
-		/* Hold eos packet until eos frame received(flushed) */
-		if (is_eos) {
-			LOGV(1, "hold eos packet: %d\n",
-			     rkmpp_buffer->index);
-			dec->eos_packet = rkmpp_buffer;
+		/* Done with internal EOS buffer */
+		if (rkmpp_buffer == &ctx->eos_buffer)
 			break;
-		}
 
 		LOGV(2, "put packet: %d(%" PRIu64 ") len=%d\n",
 		     rkmpp_buffer->index, rkmpp_buffer->timestamp,
@@ -164,6 +165,51 @@ static void rkmpp_put_packets(struct rkmpp_dec_context *dec)
 	pthread_mutex_unlock(&ctx->output.queue_mutex);
 
 	LEAVE();
+}
+
+static void rkmpp_try_send_eos(struct rkmpp_dec_context *dec)
+{
+	struct rkmpp_context *ctx = dec->ctx;
+	struct rkmpp_buffer *rkmpp_buffer;
+	MppBuffer buffer = NULL;
+	MPP_RET ret;
+	int index;
+
+	if (!ctx->capture.streaming)
+		return;
+
+	/* Require an unused buffer for EOS */
+	ret = mpp_buffer_get(ctx->capture.external_group, &buffer, 1);
+	if (ret != MPP_OK) {
+		LOGV(2, "unable to lock buffer for EOS\n");
+		goto err;
+	}
+
+	index = mpp_buffer_get_index(buffer);
+	if (index < 0 || index >= (int)ctx->capture.num_buffers) {
+		LOGE("invalid buffer index for EOS\n");
+		goto err;
+	}
+
+	rkmpp_buffer = &ctx->capture.buffers[index];
+	if (buffer != rkmpp_buffer->rkmpp_buf) {
+		LOGE("invalid buffer for EOS\n");
+		goto err;
+	}
+
+	rkmpp_buffer_set_locked(rkmpp_buffer);
+
+	rkmpp_finish_flushing(ctx, rkmpp_buffer);
+
+	LOGV(1, "return EOS frame: %d\n", rkmpp_buffer->index);
+
+	dec->pending_eos = false;
+	return;
+err:
+	if (buffer)
+		mpp_buffer_put(buffer);
+
+	dec->pending_eos = true;
 }
 
 /* Feed all available frames to mpp */
@@ -189,6 +235,9 @@ static void rkmpp_put_frames(struct rkmpp_dec_context *dec)
 		rkmpp_buffer_clr_locked(rkmpp_buffer);
 	}
 	pthread_mutex_unlock(&ctx->capture.queue_mutex);
+
+	if (dec->pending_eos)
+		rkmpp_try_send_eos(dec);
 
 	LEAVE();
 }
@@ -313,24 +362,11 @@ static void *decoder_thread_fn(void *data)
 			goto next_locked;
 		}
 
-		/* Handle eos frame, returning eos packet to userspace */
+		/* Handle flushing */
 		if (mpp_frame_get_eos(frame)) {
-			if (dec->eos_packet) {
-				assert(ctx->output.streaming);
+			LOGV(1, "seen EOS frame\n");
 
-				dec->eos_packet->bytesused = 0;
-
-				LOGV(1, "return eos packet: %d\n",
-				     dec->eos_packet->index);
-
-				pthread_mutex_lock(&ctx->output.queue_mutex);
-				TAILQ_INSERT_TAIL(&ctx->output.avail_buffers,
-						  dec->eos_packet, entry);
-				rkmpp_buffer_set_available(dec->eos_packet);
-				pthread_mutex_unlock(&ctx->output.queue_mutex);
-				dec->eos_packet = NULL;
-			}
-
+			rkmpp_try_send_eos(dec);
 			goto next_locked;
 		}
 
@@ -392,6 +428,24 @@ next:
 	return NULL;
 }
 
+static int rkmpp_dec_qbuf(struct rkmpp_dec_context *dec,
+			  struct v4l2_buffer *buffer)
+{
+	struct rkmpp_context *ctx = dec->ctx;
+	int ret;
+
+	ENTER();
+
+	ret = rkmpp_qbuf(ctx, buffer);
+	if (ret < 0)
+		RETURN_ERR(errno, -1);
+
+	rkmpp_feed_mpp(dec);
+
+	LEAVE();
+	return ret;
+}
+
 static int rkmpp_dec_g_fmt(struct rkmpp_dec_context *dec,
 			   struct v4l2_format *f)
 {
@@ -451,6 +505,10 @@ static int rkmpp_dec_dqevent(struct rkmpp_dec_context *dec,
 	event->u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION;
 	dec->video_info.event = false;
 	LOGV(1, "dequeue resolution change event\n");
+
+	/* The chromium's stateful decoder needs a last buffer for flushing */
+	if (ctx->mpp_streaming)
+		rkmpp_try_send_eos(dec);
 
 	LEAVE();
 	return 0;
@@ -568,9 +626,8 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 
 	rkmpp_reset_queue(ctx, queue);
 
-	/* Clear eos packet */
-	if (*type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
-		dec->eos_packet = NULL;
+	if (queue == &ctx->capture)
+		dec->pending_eos = false;
 
 	/* Stop mpp streaming only when all queues stopped */
 	if (ctx->mpp_streaming &&
@@ -680,6 +737,46 @@ static int rkmpp_dec_g_ext_ctrls(struct rkmpp_dec_context *dec,
 	return 0;
 }
 
+static int rkmpp_try_dec_cmd(struct rkmpp_dec_context *dec,
+			     struct v4l2_decoder_cmd *cmd)
+{
+	struct rkmpp_context *ctx = dec->ctx;
+
+	ENTER();
+
+	if (cmd->cmd != V4L2_DEC_CMD_START && cmd->cmd != V4L2_DEC_CMD_STOP) {
+		LOGE("unsupported cmd: %x\n", cmd->cmd);
+		RETURN_ERR(EINVAL, -1);
+	}
+
+	LEAVE();
+	return 0;
+}
+
+static int rkmpp_dec_cmd(struct rkmpp_dec_context *dec,
+			 struct v4l2_decoder_cmd *cmd)
+{
+	struct rkmpp_context *ctx = dec->ctx;
+
+	ENTER();
+
+	if (cmd->cmd == V4L2_DEC_CMD_START) {
+		LOGV(1, "handle start decoding cmd\n");
+
+		rkmpp_exit_flushing(ctx);
+	} else if (cmd->cmd == V4L2_DEC_CMD_STOP) {
+		LOGV(1, "handle stop decoding cmd\n");
+
+		rkmpp_start_flushing(ctx);
+	} else {
+		LOGE("unsupported cmd: %x\n", cmd->cmd);
+		RETURN_ERR(EINVAL, -1);
+	}
+
+	LEAVE();
+	return 0;
+}
+
 bool rkmpp_dec_has_event(void *data)
 {
 	struct rkmpp_dec_context *dec = data;
@@ -775,15 +872,14 @@ int rkmpp_dec_ioctl(void *data, unsigned long cmd, void *arg)
 	case VIDIOC_EXPBUF:
 		ret = rkmpp_expbuf(ctx, arg);
 		break;
-	case VIDIOC_QBUF:
-		ret = rkmpp_qbuf(ctx, arg);
-		rkmpp_feed_mpp(dec);
-		break;
 	case VIDIOC_DQBUF:
 		ret = rkmpp_dqbuf(ctx, arg);
 		break;
 
 	/* Decoder special ioctls */
+	case VIDIOC_QBUF:
+		ret = rkmpp_dec_qbuf(dec, arg);
+		break;
 	case VIDIOC_G_FMT:
 		ret = rkmpp_dec_g_fmt(dec, arg);
 		break;
@@ -810,6 +906,12 @@ int rkmpp_dec_ioctl(void *data, unsigned long cmd, void *arg)
 		break;
 	case VIDIOC_G_EXT_CTRLS:
 		ret = rkmpp_dec_g_ext_ctrls(dec, arg);
+		break;
+	case VIDIOC_TRY_DECODER_CMD:
+		ret = rkmpp_try_dec_cmd(dec, arg);
+		break;
+	case VIDIOC_DECODER_CMD:
+		ret = rkmpp_dec_cmd(dec, arg);
 		break;
 	default:
 		LOGV(1, "unsupported ioctl cmd: %s(%lu)!\n",

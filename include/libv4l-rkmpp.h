@@ -127,6 +127,7 @@ struct rkmpp_fmt {
  * @PENDING:		Buffer is in pending queue.
  * @AVAILABLE:		Buffer is in available queue.
  * @KEYFRAME:		Buffer is keyframe.
+ * @LAST:		Buffer is the last.
  */
 enum rkmpp_buffer_flag {
 	RKMPP_BUFFER_ERROR	= 1 << 0,
@@ -136,6 +137,7 @@ enum rkmpp_buffer_flag {
 	RKMPP_BUFFER_PENDING	= 1 << 4,
 	RKMPP_BUFFER_AVAILABLE	= 1 << 5,
 	RKMPP_BUFFER_KEYFRAME	= 1 << 6,
+	RKMPP_BUFFER_LAST	= 1 << 7,
 };
 
 /**
@@ -222,6 +224,8 @@ struct rkmpp_buf_queue {
  * @mpi:		Handler of mpp api.
  * @mpp_streaming:	The mpp is streaming.
  * @mpp_produced:	The mpp has produced packets or frames.
+ * @pausing:		Stop feeding new data to mpp.
+ * @eos_buffer:		A dummy buffer used to represent EOS.
  * @output:		Output queue.
  * @capture:		Capture queue.
  * @ioctl_mutex:	Mutex for ioctl.
@@ -245,6 +249,9 @@ struct rkmpp_context {
 
 	bool mpp_streaming;
 	bool mpp_produced;
+
+	bool pausing;
+	struct rkmpp_buffer eos_buffer;
 
 	struct rkmpp_buf_queue output;
 	struct rkmpp_buf_queue capture;
@@ -416,6 +423,7 @@ RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_QUEUED, queued)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_PENDING, pending)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_AVAILABLE, available)
 RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_KEYFRAME, keyframe)
+RKMPP_BUFFER_FLAG_HELPERS(RKMPP_BUFFER_LAST, last)
 
 void rkmpp_new_frame(struct rkmpp_context *ctx);
 int rkmpp_update_poll_event(struct rkmpp_context *ctx);
@@ -436,6 +444,12 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer);
 
 void rkmpp_streamon(struct rkmpp_context *ctx);
 void rkmpp_streamoff(struct rkmpp_context *ctx);
+
+void rkmpp_cancel_flushing(struct rkmpp_context *ctx);
+void rkmpp_start_flushing(struct rkmpp_context *ctx);
+void rkmpp_exit_flushing(struct rkmpp_context *ctx);
+void rkmpp_finish_flushing(struct rkmpp_context *ctx,
+			   struct rkmpp_buffer *rkmpp_buffer);
 
 /* Utils */
 

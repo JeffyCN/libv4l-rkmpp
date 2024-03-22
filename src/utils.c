@@ -272,6 +272,8 @@ int rkmpp_to_v4l2_buffer(struct rkmpp_context *ctx,
 		buffer->flags |= V4L2_BUF_FLAG_KEYFRAME;
 	if (rkmpp_buffer_error(rkmpp_buffer))
 		buffer->flags |= V4L2_BUF_FLAG_ERROR;
+	if (rkmpp_buffer_last(rkmpp_buffer))
+		buffer->flags |= V4L2_BUF_FLAG_LAST;
 	if (rkmpp_buffer_queued(rkmpp_buffer)) {
 		buffer->flags |= V4L2_BUF_FLAG_QUEUED;
 		if (rkmpp_buffer_available(rkmpp_buffer))
@@ -335,6 +337,8 @@ int rkmpp_from_v4l2_buffer(struct rkmpp_context *ctx,
 		rkmpp_buffer_clr_keyframe(rkmpp_buffer);
 	if (rkmpp_buffer_error(rkmpp_buffer))
 		rkmpp_buffer_clr_error(rkmpp_buffer);
+	if (rkmpp_buffer_last(rkmpp_buffer))
+		rkmpp_buffer_clr_last(rkmpp_buffer);
 
 	LEAVE();
 	return 0;

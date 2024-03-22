@@ -150,6 +150,9 @@ void rkmpp_reset_queue(struct rkmpp_context *ctx,
 
 		if (rkmpp_buffer_keyframe(rkmpp_buffer))
 			rkmpp_buffer_clr_keyframe(rkmpp_buffer);
+
+		if (rkmpp_buffer_last(rkmpp_buffer))
+			rkmpp_buffer_clr_last(rkmpp_buffer);
 	}
 
 	LEAVE();
@@ -624,11 +627,6 @@ int rkmpp_qbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 		RETURN_ERR(EINVAL, -1);
 	}
 
-	LOGV(2, "enqueue buffer: %d(%ld), size: %d, type: %d, fd: %d\n",
-	     buffer->index, buffer->timestamp.tv_sec,
-	     rkmpp_buffer->bytesused, buffer->type,
-	     rkmpp_buffer->fd);
-
 	rkmpp_buffer_set_queued(rkmpp_buffer);
 
 	pthread_mutex_lock(&queue->queue_mutex);
@@ -636,6 +634,11 @@ int rkmpp_qbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 			  rkmpp_buffer, entry);
 	rkmpp_buffer_set_pending(rkmpp_buffer);
 	pthread_mutex_unlock(&queue->queue_mutex);
+
+	LOGV(2, "enqueue buffer: %d(%ld), size: %d, type: %d, fd: %d\n",
+	     buffer->index, buffer->timestamp.tv_sec,
+	     rkmpp_buffer->bytesused, buffer->type,
+	     rkmpp_buffer->fd);
 
 	LEAVE();
 	return 0;
@@ -703,6 +706,7 @@ void rkmpp_streamon(struct rkmpp_context *ctx)
 
 	/* Notify the worker thread to start streaming */
 	pthread_mutex_lock(&ctx->worker_mutex);
+	ctx->pausing = false;
 	ctx->mpp_produced = false;
 	ctx->mpp_streaming = true;
 	pthread_cond_signal(&ctx->worker_cond);
@@ -728,6 +732,69 @@ void rkmpp_streamoff(struct rkmpp_context *ctx)
 	pthread_mutex_unlock(&ctx->worker_mutex);
 
 	LEAVE();
+}
+
+void rkmpp_cancel_flushing(struct rkmpp_context *ctx)
+{
+	if (!rkmpp_buffer_pending(&ctx->eos_buffer))
+		return;
+
+	/* Clear EOS if pending */
+	pthread_mutex_lock(&ctx->output.queue_mutex);
+	TAILQ_REMOVE(&ctx->output.pending_buffers, &ctx->eos_buffer, entry);
+	rkmpp_buffer_clr_pending(&ctx->eos_buffer);
+	pthread_mutex_unlock(&ctx->output.queue_mutex);
+}
+
+void rkmpp_exit_flushing(struct rkmpp_context *ctx)
+{
+	LOGV(1, "mpp exit flushing\n");
+
+	rkmpp_cancel_flushing(ctx);
+
+	/* Unpause and wakeup worker thread */
+	pthread_mutex_lock(&ctx->worker_mutex);
+	ctx->pausing = false;
+	pthread_cond_signal(&ctx->worker_cond);
+	pthread_mutex_unlock(&ctx->worker_mutex);
+}
+
+void rkmpp_start_flushing(struct rkmpp_context *ctx)
+{
+	LOGV(1, "mpp start flushing\n");
+
+	rkmpp_cancel_flushing(ctx);
+
+	/* Enqueue EOS for flushing */
+	pthread_mutex_lock(&ctx->output.queue_mutex);
+	TAILQ_INSERT_TAIL(&ctx->output.pending_buffers,
+			  &ctx->eos_buffer, entry);
+	rkmpp_buffer_set_pending(&ctx->eos_buffer);
+	pthread_mutex_unlock(&ctx->output.queue_mutex);
+
+	/* Wakeup worker thread */
+	pthread_mutex_lock(&ctx->worker_mutex);
+	pthread_cond_signal(&ctx->worker_cond);
+	pthread_mutex_unlock(&ctx->worker_mutex);
+}
+
+void rkmpp_finish_flushing(struct rkmpp_context *ctx,
+			   struct rkmpp_buffer *rkmpp_buffer)
+{
+	LOGV(1, "mpp finish flushing\n");
+
+	/* Return a last empty buffer to represent flush finished */
+	assert(ctx->capture.streaming);
+
+	rkmpp_buffer->bytesused = 0;
+	rkmpp_buffer->timestamp = 0;
+	rkmpp_buffer_set_last(rkmpp_buffer);
+
+	pthread_mutex_lock(&ctx->capture.queue_mutex);
+	TAILQ_INSERT_TAIL(&ctx->capture.avail_buffers,
+			  rkmpp_buffer, entry);
+	rkmpp_buffer_set_available(rkmpp_buffer);
+	pthread_mutex_unlock(&ctx->capture.queue_mutex);
 }
 
 int rkmpp_update_poll_event(struct rkmpp_context *ctx)
@@ -925,6 +992,9 @@ static void *plugin_init(int fd)
 		fmt->frmsize.max_width = ctx->max_width;
 		fmt->frmsize.max_height = ctx->max_height;
 	}
+
+	ctx->eos_buffer.index = -1;
+	rkmpp_buffer_set_last(&ctx->eos_buffer);
 
 	LOGV(1, "ctx(%p): plugin inited\n", (void *)ctx);
 

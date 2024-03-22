@@ -60,6 +60,7 @@ struct rkmpp_video_info {
  * @ctx:		Common context data.
  * @video_info:		Video information.
  * @event_subscribed:	V4L2 event subscribed.
+ * @pending_eos:	Has pending EOS to return.
  */
 struct rkmpp_dec_context {
 	struct rkmpp_context *ctx;
@@ -67,7 +68,7 @@ struct rkmpp_dec_context {
 
 	bool event_subscribed;
 
-	struct rkmpp_buffer *eos_packet;
+	bool pending_eos;
 };
 
 bool rkmpp_dec_has_event(void *data);

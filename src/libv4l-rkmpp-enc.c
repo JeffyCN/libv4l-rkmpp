@@ -113,6 +113,37 @@ static int rkmpp_put_frame(struct rkmpp_enc_context *enc)
 
 	ENTER();
 
+	pthread_mutex_lock(&ctx->output.queue_mutex);
+	rkmpp_buffer = TAILQ_FIRST(&ctx->output.pending_buffers);
+	pthread_mutex_unlock(&ctx->output.queue_mutex);
+
+	/* Handle flushing */
+	if (rkmpp_buffer == &ctx->eos_buffer) {
+		LOGV(1, "processing flush request\n");
+
+		ctx->pausing = true;
+
+		pthread_mutex_lock(&ctx->output.queue_mutex);
+		TAILQ_REMOVE(&ctx->output.pending_buffers, rkmpp_buffer, entry);
+		rkmpp_buffer_clr_pending(rkmpp_buffer);
+		pthread_mutex_unlock(&ctx->output.queue_mutex);
+
+		/* Pick an unused buffer for EOS */
+		pthread_mutex_lock(&ctx->capture.queue_mutex);
+		rkmpp_buffer = TAILQ_FIRST(&ctx->capture.pending_buffers);
+		TAILQ_REMOVE(&ctx->capture.pending_buffers,
+			     rkmpp_buffer, entry);
+		rkmpp_buffer_clr_pending(rkmpp_buffer);
+		pthread_mutex_unlock(&ctx->capture.queue_mutex);
+
+		rkmpp_finish_flushing(ctx, rkmpp_buffer);
+
+		LOGV(1, "return EOS packet: %d\n", rkmpp_buffer->index);
+
+		LEAVE();
+		return 0;
+	}
+
 	ret = mpp_frame_init(&frame);
 	if (ret != MPP_OK) {
 		LOGE("failed to init frame\n");
@@ -124,12 +155,6 @@ static int rkmpp_put_frame(struct rkmpp_enc_context *enc)
 	mpp_frame_set_hor_stride(frame, enc->hstride);
 	mpp_frame_set_ver_stride(frame, enc->vstride);
 	mpp_frame_set_fmt(frame, rkmpp_fmt->format);
-
-	pthread_mutex_lock(&ctx->output.queue_mutex);
-	rkmpp_buffer = TAILQ_FIRST(&ctx->output.pending_buffers);
-	TAILQ_REMOVE(&ctx->output.pending_buffers, rkmpp_buffer, entry);
-	rkmpp_buffer_clr_pending(rkmpp_buffer);
-	pthread_mutex_unlock(&ctx->output.queue_mutex);
 
 	mpp_frame_set_buffer(frame, rkmpp_buffer->rkmpp_buf);
 
@@ -143,6 +168,11 @@ static int rkmpp_put_frame(struct rkmpp_enc_context *enc)
 		LOGE("failed to put frame\n");
 		return -1;
 	}
+
+	pthread_mutex_lock(&ctx->output.queue_mutex);
+	TAILQ_REMOVE(&ctx->output.pending_buffers, rkmpp_buffer, entry);
+	rkmpp_buffer_clr_pending(rkmpp_buffer);
+	pthread_mutex_unlock(&ctx->output.queue_mutex);
 
 	LOGV(2, "put frame: %d(%" PRIu64 ")\n",
 	     rkmpp_buffer->index, rkmpp_buffer->timestamp);
@@ -251,7 +281,8 @@ static void *encoder_thread_fn(void *data)
 			enc->header = rkmpp_get_header(enc);
 
 		/* Wait for buffers */
-		while (TAILQ_EMPTY(&ctx->capture.pending_buffers) ||
+		while (ctx->pausing ||
+		       TAILQ_EMPTY(&ctx->capture.pending_buffers) ||
 		       TAILQ_EMPTY(&ctx->output.pending_buffers))
 			pthread_cond_wait(&ctx->worker_cond,
 					  &ctx->worker_mutex);
@@ -1095,6 +1126,30 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 	return 0;
 }
 
+static int rkmpp_enc_cmd(struct rkmpp_enc_context *enc,
+			 struct v4l2_encoder_cmd *cmd)
+{
+	struct rkmpp_context *ctx = enc->ctx;
+
+	ENTER();
+
+	if (cmd->cmd == V4L2_ENC_CMD_START) {
+		LOGV(1, "handle start encoding cmd\n");
+
+		rkmpp_exit_flushing(ctx);
+	} else if (cmd->cmd == V4L2_ENC_CMD_STOP) {
+		LOGV(1, "handle stop encoding cmd\n");
+
+		rkmpp_start_flushing(ctx);
+	} else {
+		LOGE("unsupported cmd: %x\n", cmd->cmd);
+		RETURN_ERR(EINVAL, -1);
+	}
+
+	LEAVE();
+	return 0;
+}
+
 bool rkmpp_enc_has_event(void *data)
 {
 	(void)data; /* unused */
@@ -1225,6 +1280,9 @@ int rkmpp_enc_ioctl(void *data, unsigned long cmd, void *arg)
 		break;
 	case VIDIOC_S_EXT_CTRLS:
 		ret = rkmpp_enc_s_ext_ctrls(enc, arg);
+		break;
+	case VIDIOC_ENCODER_CMD:
+		ret = rkmpp_enc_cmd(enc, arg);
 		break;
 	default:
 		LOGV(1, "unsupported ioctl cmd: %s(%lu)!\n",
