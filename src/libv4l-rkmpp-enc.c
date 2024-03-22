@@ -144,7 +144,7 @@ static int rkmpp_put_frame(struct rkmpp_enc_context *enc)
 		return -1;
 	}
 
-	LOGV(3, "put frame: %d(%" PRIu64 ")\n",
+	LOGV(2, "put frame: %d(%" PRIu64 ")\n",
 	     rkmpp_buffer->index, rkmpp_buffer->timestamp);
 
 	rkmpp_buffer->bytesused = 0;
@@ -328,7 +328,7 @@ static void *encoder_thread_fn(void *data)
 
 		rkmpp_buffer->timestamp = frame_buffer->timestamp;
 
-		LOGV(3, "return frame: %d(%" PRIu64 ")\n",
+		LOGV(2, "return frame: %d(%" PRIu64 ")\n",
 		     index, frame_buffer->timestamp);
 
 		pthread_mutex_lock(&ctx->output.queue_mutex);
@@ -340,7 +340,7 @@ static void *encoder_thread_fn(void *data)
 		/* Report new frame to count fps */
 		rkmpp_new_frame(ctx);
 
-		LOGV(3, "return packet: %d(%" PRIu64 ") len=%d\n",
+		LOGV(2, "return packet: %d(%" PRIu64 ") len=%d\n",
 		     rkmpp_buffer->index, rkmpp_buffer->timestamp,
 		     rkmpp_buffer->bytesused);
 
@@ -788,7 +788,7 @@ static int rkmpp_enc_s_parm(struct rkmpp_enc_context *enc,
 	enc->denominator = parms->parm.output.timeperframe.numerator;
 	enc->numerator = parms->parm.output.timeperframe.denominator;
 
-	LOGV(3, "numerator: %d, denominator: %d\n",
+	LOGV(1, "numerator: %d, denominator: %d\n",
 	     parms->parm.output.timeperframe.numerator,
 	     parms->parm.output.timeperframe.denominator);
 
@@ -906,7 +906,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			else
 				enc->header_mode = MPP_ENC_HEADER_MODE_DEFAULT;
 
-			LOGV(3, "header mode: %d\n", ctrl->value);
+			LOGV(1, "header mode: %d\n", ctrl->value);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
@@ -916,7 +916,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:
 			enc->keyframe_requested++;
-			LOGV(3, "request keyframes: %d\n",
+			LOGV(1, "request keyframes: %d\n",
 			     enc->keyframe_requested);
 
 			if (ctx->mpp_streaming &&
@@ -939,7 +939,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 				RETURN_ERR(errno, -1);
 			}
 
-			LOGV(3, "bitrate mode: %d\n", ctrl->value);
+			LOGV(1, "bitrate mode: %d\n", ctrl->value);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
@@ -949,7 +949,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_VIDEO_BITRATE:
 			enc->bitrate = ctrl->value;
-			LOGV(3, "bitrate: %d\n", enc->bitrate);
+			LOGV(1, "bitrate: %d\n", enc->bitrate);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
@@ -971,7 +971,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_VIDEO_H264_MAX_QP:
 			enc->max_qp = ctrl->value;
-			LOGV(3, "h264 max qp: %d\n", enc->max_qp);
+			LOGV(1, "h264 max qp: %d\n", enc->max_qp);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
@@ -981,7 +981,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_VIDEO_H264_MIN_QP:
 			enc->min_qp = ctrl->value;
-			LOGV(3, "h264 min qp: %d\n", enc->min_qp);
+			LOGV(1, "h264 min qp: %d\n", enc->min_qp);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
@@ -998,7 +998,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 				RETURN_ERR(EINVAL, -1);
 			}
 
-			LOGV(3, "h264 profile: %d\n", enc->h264.profile);
+			LOGV(1, "h264 profile: %d\n", enc->h264.profile);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
@@ -1008,7 +1008,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_VIDEO_H264_LEVEL:
 			enc->h264.level = ctrl->value;
-			LOGV(3, "h264 level: %d\n", enc->h264.level);
+			LOGV(1, "h264 level: %d\n", enc->h264.level);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
@@ -1022,11 +1022,11 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			else
 				enc->h264.separate_header = false;
 
-			LOGV(3, "h264 separate header: %d\n", enc->h264.separate_header);
+			LOGV(1, "h264 separate header: %d\n", enc->h264.separate_header);
 			break;
 		case V4L2_CID_MPEG_VIDEO_VPX_MAX_QP:
 			enc->max_qp = ctrl->value;
-			LOGV(3, "vpx max qp: %d\n", enc->max_qp);
+			LOGV(1, "vpx max qp: %d\n", enc->max_qp);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_vp8_cfg(enc) < 0) {
@@ -1036,7 +1036,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_VIDEO_VPX_MIN_QP:
 			enc->min_qp = ctrl->value;
-			LOGV(3, "vpx min qp: %d\n", enc->min_qp);
+			LOGV(1, "vpx min qp: %d\n", enc->min_qp);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_vp8_cfg(enc) < 0) {
@@ -1046,7 +1046,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE:
 			enc->mb_rc = !!ctrl->value;
-			LOGV(3, "mb rc: %d\n", enc->mb_rc);
+			LOGV(1, "mb rc: %d\n", enc->mb_rc);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
@@ -1056,7 +1056,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_VIDEO_GOP_SIZE:
 			enc->gop_size = ctrl->value;
-			LOGV(3, "gop size: %d\n", enc->gop_size);
+			LOGV(1, "gop size: %d\n", enc->gop_size);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
@@ -1066,7 +1066,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_MFC51_VIDEO_RC_REACTION_COEFF:
 			enc->rc_reaction_coeff = ctrl->value;
-			LOGV(3, "rc reaction coeff: %d\n",
+			LOGV(1, "rc reaction coeff: %d\n",
 			     enc->rc_reaction_coeff);
 
 			if (ctx->mpp_streaming &&
@@ -1077,7 +1077,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			break;
 		case V4L2_CID_MPEG_MFC51_VIDEO_RC_FIXED_TARGET_BIT:
 			enc->fixed_bitrate = !!ctrl->value;
-			LOGV(3, "fixed bitrate: %d\n", enc->fixed_bitrate);
+			LOGV(1, "fixed bitrate: %d\n", enc->fixed_bitrate);
 
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {

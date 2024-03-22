@@ -401,7 +401,7 @@ int rkmpp_g_fmt(struct rkmpp_context *ctx, struct v4l2_format *f)
 
 	ENTER();
 
-	LOGV(4, "f->type = %d\n", f->type);
+	LOGV(1, "f->type = %d\n", f->type);
 
 	queue = rkmpp_get_queue(ctx, f->type);
 	if (!queue)
@@ -624,7 +624,7 @@ int rkmpp_qbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 		RETURN_ERR(EINVAL, -1);
 	}
 
-	LOGV(3, "enqueue buffer: %d(%ld), size: %d, type: %d, fd: %d\n",
+	LOGV(2, "enqueue buffer: %d(%ld), size: %d, type: %d, fd: %d\n",
 	     buffer->index, buffer->timestamp.tv_sec,
 	     rkmpp_buffer->bytesused, buffer->type,
 	     rkmpp_buffer->fd);
@@ -684,7 +684,7 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 
 	rkmpp_buffer_clr_queued(rkmpp_buffer);
 
-	LOGV(3, "dequeue buffer: %d(%" PRIu64 "), size: %d, type: %d\n",
+	LOGV(2, "dequeue buffer: %d(%" PRIu64 "), size: %d, type: %d\n",
 	     buffer->index, rkmpp_buffer->timestamp,
 	     rkmpp_buffer->bytesused, buffer->type);
 

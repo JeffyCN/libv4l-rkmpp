@@ -148,13 +148,13 @@ static void rkmpp_put_packets(struct rkmpp_dec_context *dec)
 			break;
 		}
 
-		LOGV(3, "put packet: %d(%" PRIu64 ") len=%d\n",
+		LOGV(2, "put packet: %d(%" PRIu64 ") len=%d\n",
 		     rkmpp_buffer->index, rkmpp_buffer->timestamp,
 		     rkmpp_buffer->bytesused);
 
 		rkmpp_buffer->bytesused = 0;
 
-		LOGV(3, "return packet: %d\n",
+		LOGV(2, "return packet: %d\n",
 		     rkmpp_buffer->index);
 
 		TAILQ_INSERT_TAIL(&ctx->output.avail_buffers,
@@ -182,7 +182,7 @@ static void rkmpp_put_frames(struct rkmpp_dec_context *dec)
 			     rkmpp_buffer, entry);
 		rkmpp_buffer_clr_pending(rkmpp_buffer);
 
-		LOGV(3, "put frame: %d fd: %d\n", rkmpp_buffer->index,
+		LOGV(2, "put frame: %d fd: %d\n", rkmpp_buffer->index,
 		     rkmpp_buffer->fd);
 
 		mpp_buffer_put(rkmpp_buffer->rkmpp_buf);
@@ -365,7 +365,7 @@ static void *decoder_thread_fn(void *data)
 				dec->video_info.ver_stride * 3 / 2;
 		}
 
-		LOGV(3, "return frame: %d(%" PRIu64 ")\n",
+		LOGV(2, "return frame: %d(%" PRIu64 ")\n",
 		     index, rkmpp_buffer->timestamp);
 
 		/* Report new frame to count fps */
@@ -400,7 +400,7 @@ static int rkmpp_dec_g_fmt(struct rkmpp_dec_context *dec,
 
 	ENTER();
 
-	LOGV(4, "f->type = %d\n", f->type);
+	LOGV(1, "f->type = %d\n", f->type);
 
 	/* The chromium expected EINVAL when resolution not available */
 	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
