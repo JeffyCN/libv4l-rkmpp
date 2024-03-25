@@ -1,3 +1,13 @@
+libv4l-rkmpp (1.7.0-1) stable; urgency=medium
+
+  * enc: Support bitrate mode for new chromium V4L2 video encoder
+  * Refactor a bit
+  * Fix race between thread and resetting
+  * Adjust log levels
+  * Support flushing with encode and decode cmds
+
+ -- Jeffy Chen <jeffy.chen@rock-chips.com>  Mon, 25 Mar 2024 09:57:39 +0800
+
 libv4l-rkmpp (1.6.0-1) stable; urgency=medium
 
   * meson: Compat with old meson
