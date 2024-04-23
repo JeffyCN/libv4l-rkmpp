@@ -671,9 +671,6 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 	rkmpp_buffer = TAILQ_FIRST(&queue->avail_buffers);
 	pthread_mutex_unlock(&queue->queue_mutex);
 
-	/* Update poll event after avail list changed */
-	rkmpp_update_poll_event(ctx);
-
 	ret = rkmpp_to_v4l2_buffer(ctx, rkmpp_buffer, buffer);
 	if (ret < 0) {
 		LOGE("failed to convert buffer\n");
@@ -684,6 +681,9 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 	rkmpp_buffer_clr_available(rkmpp_buffer);
 	TAILQ_REMOVE(&queue->avail_buffers, rkmpp_buffer, entry);
 	pthread_mutex_unlock(&queue->queue_mutex);
+
+	/* Update poll event after avail list changed */
+	rkmpp_update_poll_event(ctx);
 
 	rkmpp_buffer_clr_queued(rkmpp_buffer);
 
