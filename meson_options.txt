@@ -1,7 +1,5 @@
 option('verbose', type : 'boolean', value : 'false',
        description : 'Enable verbose logging (default: false)')
-option('rga', type : 'feature', value : 'auto',
-       description : 'Use Rockchip librga (default: auto)')
 option('libv4l2subdir', type : 'string', value : 'libv4l',
        description : 'Libv4l2 library subdir (default: libv4l)')
 option('max-dec-width', type : 'integer', min : 1920, value : 3840,

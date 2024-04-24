@@ -9,16 +9,11 @@ project(
 libthreads_dep = dependency('threads')
 libv4l_dep = dependency('libv4l2')
 mpp_dep = dependency('rockchip_mpp')
-rga_dep = dependency('librga', required : get_option('rga'))
 
 cdata = configuration_data()
 
 if get_option('verbose')
   cdata.set10('DEBUG', 1)
-endif
-
-if rga_dep.found() and not get_option('rga').disabled()
-  cdata.set10('HAVE_RGA', 1)
 endif
 
 cdata.set('MAX_DEC_WIDTH', get_option('max-dec-width'))
@@ -32,7 +27,6 @@ deps = [
   libthreads_dep,
   libv4l_dep,
   mpp_dep,
-  rga_dep,
 ]
 
 srcs = [

@@ -9,7 +9,6 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 * [v4l-utils](https://git.linuxtv.org/v4l-utils.git) - with this patch:  
   [0001-libv4l2-Support-mmap-to-libv4l-plugin.patch](https://github.com/JeffyCN/meta-rockchip/blob/release-1.3.0_20200915/recipes-multimedia/v4l2apps/v4l-utils/0001-libv4l2-Support-mmap-to-libv4l-plugin.patch)
 * [rockchip-mpp](https://github.com/rockchip-linux/mpp)
-* [linux-rga](https://github.com/rockchip-linux/linux-rga)
 
 ## Building
 
@@ -67,11 +66,7 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 # mpi_dec_test -t 7 -i test-25fps.h264
 ```  
 
-2. The plugin complaining about "ERR: failed to init rga"?  
-
-   Make sure "/dev/rga" exists and accessable by the chromium.
-
-3. How to get more verbose logs?  
+2. How to get more verbose logs?  
 
    For chromium, use these command line flags to change the log level: [--enable-logging --vmodule=*/media/gpu*=4](https://www.chromium.org/for-testers/enable-logging)  
 
@@ -81,7 +76,7 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 
    For vpu driver, write verbose log level to "/sys/module/rk_vcodec/parameters/debug".
 
-4. What about the performance?  
+3. What about the performance?  
 
    The performance should be much the same as other MPP based decoders/encoders (e.g. mpi_dec_test and gstreamer MPP plugin).  
 

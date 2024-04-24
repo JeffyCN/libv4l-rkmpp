@@ -16,102 +16,11 @@
 
 #include "libv4l-rkmpp.h"
 
-#ifdef HAVE_RGA
-#include <rga/rga.h>
-#include <rga/RgaApi.h>
-#endif
-
-static int rkmpp_rga_copy(const struct v4l2_pix_format_mplane *format,
-			  const struct rkmpp_fmt *rkmpp_format,
-			  int rkmpp_fd, void *v4l2_addr,
-			  int copy_to)
-{
-#ifndef HAVE_RGA
-	(void)format; /* unused */
-	(void)rkmpp_format; /* unused */
-	(void)rkmpp_fd; /* unused */
-	(void)v4l2_addr; /* unused */
-	(void)copy_to; /* unused */
-	return -1;
-#else
-	RgaSURF_FORMAT rga_format;
-	rga_info_t src_info = {0};
-	rga_info_t dst_info = {0};
-	uint32_t pix_fmt = format->pixelformat;
-	int width = format->width;
-	int height = format->height;
-	int vir_w = format->plane_fmt[0].bytesperline * 8 /
-		rkmpp_format->depth[0];
-	int vir_h = format->plane_fmt[0].sizeimage /
-		format->plane_fmt[0].bytesperline;
-
-	static int rga_supported = 1;
-	static int rga_inited = 0;
-
-	if (!rga_supported)
-		return -1;
-
-	if (!rga_inited) {
-		if (c_RkRgaInit() < 0) {
-			LOGE("failed to init rga\n");
-			rga_supported = 0;
-			return -1;
-		}
-		rga_inited = 1;
-	}
-
-	switch (pix_fmt) {
-	case V4L2_PIX_FMT_NV12:
-	case V4L2_PIX_FMT_NV12M:
-		rga_format = RK_FORMAT_YCbCr_420_SP;
-		break;
-	case V4L2_PIX_FMT_NV21:
-	case V4L2_PIX_FMT_NV21M:
-		rga_format = RK_FORMAT_YCrCb_420_SP;
-		break;
-	case V4L2_PIX_FMT_YUV420:
-	case V4L2_PIX_FMT_YUV420M:
-		rga_format = RK_FORMAT_YCbCr_420_P;
-		break;
-	case V4L2_PIX_FMT_YVU420:
-	case V4L2_PIX_FMT_YVU420M:
-		rga_format = RK_FORMAT_YCrCb_420_P;
-		break;
-	case V4L2_PIX_FMT_YUYV:
-		rga_format = RK_FORMAT_YCbCr_422_P;
-		break;
-	case V4L2_PIX_FMT_YVYU:
-		rga_format = RK_FORMAT_YCrCb_422_P;
-		break;
-	default:
-		LOGV(3, "unsupported format\n");
-		return -1;
-	}
-
-	src_info.fd = rkmpp_fd;
-	src_info.mmuFlag = 1;
-	rga_set_rect(&src_info.rect, 0, 0, width, height,
-		     vir_w, vir_h, rga_format);
-
-	dst_info.virAddr = v4l2_addr;
-	dst_info.mmuFlag = 1;
-	rga_set_rect(&dst_info.rect, 0, 0, width, height,
-		     vir_w, vir_h, rga_format);
-
-	if (copy_to)
-		return c_RkRgaBlit(&src_info, &dst_info, NULL) >= 0;
-	else
-		return c_RkRgaBlit(&dst_info, &src_info, NULL) >= 0;
-#endif
-}
-
 static int rkmpp_copy_buffer(struct rkmpp_context *ctx,
 			     struct rkmpp_buffer *rkmpp_buffer,
 			     struct v4l2_buffer *buffer, int copy_to)
 {
 	struct rkmpp_buf_queue *queue;
-	const struct rkmpp_fmt *rkmpp_format;
-	const struct v4l2_pix_format_mplane *format;
 	char *rkmpp_ptr;
 	char *addrs[3] = {0};
 	uint32_t sizes[3], offsets[3];
@@ -134,8 +43,6 @@ static int rkmpp_copy_buffer(struct rkmpp_context *ctx,
 		return -1;
 
 	rkmpp_ptr = mpp_buffer_get_ptr(rkmpp_buffer->rkmpp_buf);
-	rkmpp_format = queue->rkmpp_format;
-	format = &queue->format;
 
 	/* Prepare access */
 	for (i = 0; i < buffer->length; i++) {
@@ -163,24 +70,7 @@ static int rkmpp_copy_buffer(struct rkmpp_context *ctx,
 		offsets[i] = i == 0 ? 0 : offsets[i - 1] + sizes[i - 1];
 	}
 
-	/* Copy compressed data directly */
-	if (rkmpp_format->type != MPP_VIDEO_CodingNone)
-		goto bail;
-
-	/* Check contig buffer for RGA */
-	for (i = 0; i < buffer->length; i++) {
-		if (addrs[i] != addrs[0] + offsets[i])
-			goto bail;
-	}
-
-	if (rkmpp_rga_copy(format, rkmpp_format,
-			   rkmpp_buffer->fd, addrs[0], copy_to) < 0)
-		goto bail;
-
-	ret = 0;
-	goto out;
-bail:
-	LOGV(4, "fallback to software copy\n");
+	LOGV(3, "doing software copy\n");
 
 	for (i = 0; i < buffer->length; i++) {
 		if (offsets[i] + sizes[i] > rkmpp_buffer->size) {
