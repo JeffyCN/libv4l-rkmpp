@@ -5,8 +5,11 @@ Build-Depends: debhelper (>= 9),
                dh-autoreconf,
                autotools-dev,
                libtool,
+               meson,
                pkg-config,
                libv4l-dev,
+               librga-dev,
+               librga2,
                librockchip-mpp-dev
 Standards-Version: 3.9.8
 Section: libs
