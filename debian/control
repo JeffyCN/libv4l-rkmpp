@@ -2,12 +2,11 @@ Source: libv4l-rkmpp
 Priority: optional
 Maintainer: Jeffy Chen <jeffy.chen@rock-chips.com>
 Build-Depends: debhelper (>= 9),
-               dh-autoreconf,
-               autotools-dev,
-               libtool,
+               meson (>= 0.50.0),
+               ninja-build,
                pkg-config,
-               libv4l-dev,
-               librockchip-mpp-dev
+               librockchip-mpp-dev,
+               libv4l-dev
 Standards-Version: 3.9.8
 Section: libs
 Homepage: https://github.com/JeffyCN/libv4l-rkmpp
