@@ -228,7 +228,7 @@ int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 
 		if (j == f->index) {
 			strncpy((char *)f->description, fmt->name,
-				sizeof(f->description));
+				sizeof(f->description) - 1);
 			f->pixelformat = fmt->fourcc;
 
 			f->flags = 0;
