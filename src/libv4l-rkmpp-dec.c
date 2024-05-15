@@ -737,6 +737,110 @@ static int rkmpp_dec_g_ext_ctrls(struct rkmpp_dec_context *dec,
 	return 0;
 }
 
+static int rkmpp_dec_queryctrl(struct rkmpp_dec_context *dec,
+			       struct v4l2_queryctrl *query_ctrl)
+{
+	struct rkmpp_context *ctx = dec->ctx;
+
+	ENTER();
+
+	switch (query_ctrl->id) {
+	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
+		query_ctrl->minimum = V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE;
+		query_ctrl->maximum = V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_10;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_PROFILE:
+		query_ctrl->minimum = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN;
+		query_ctrl->maximum = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10;
+		break;
+	case V4L2_CID_MPEG_VIDEO_AV1_PROFILE:
+		query_ctrl->minimum = V4L2_MPEG_VIDEO_AV1_PROFILE_MAIN;
+		query_ctrl->maximum = query_ctrl->minimum;
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_PROFILE:
+		query_ctrl->minimum = V4L2_MPEG_VIDEO_VP8_PROFILE_0;
+		query_ctrl->maximum = query_ctrl->minimum;
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP9_PROFILE:
+		query_ctrl->minimum = V4L2_MPEG_VIDEO_VP9_PROFILE_0;
+		query_ctrl->maximum = V4L2_MPEG_VIDEO_VP9_PROFILE_2;
+		break;
+	/* TODO: fill info for other supported ctrls */
+	default:
+		LOGV(1, "unsupported ctrl: %x\n", query_ctrl->id);
+		RETURN_ERR(EINVAL, -1);
+	}
+
+	LEAVE();
+	return 0;
+}
+
+static int rkmpp_dec_querymenu(struct rkmpp_dec_context *dec,
+			       struct v4l2_querymenu *query_menu)
+{
+	struct rkmpp_context *ctx = dec->ctx;
+
+	ENTER();
+
+	switch (query_menu->id) {
+	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
+		switch (query_menu->index) {
+		case V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE:
+		case V4L2_MPEG_VIDEO_H264_PROFILE_MAIN:
+		case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH:
+		case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_10:
+			break;
+		default:
+			LOGV(1, "unsupported H264 profile: %x\n",
+			     query_menu->index);
+			RETURN_ERR(EINVAL, -1);
+		}
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_PROFILE:
+		switch (query_menu->index) {
+		case V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN:
+		case V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10:
+			break;
+		default:
+			LOGV(1, "unsupported HEVC profile: %x\n",
+			     query_menu->index);
+			RETURN_ERR(EINVAL, -1);
+		}
+		break;
+	case V4L2_CID_MPEG_VIDEO_AV1_PROFILE:
+		if (query_menu->index != V4L2_MPEG_VIDEO_AV1_PROFILE_MAIN) {
+			LOGV(1, "unsupported VP8 profile: %x\n",
+			     query_menu->index);
+			RETURN_ERR(EINVAL, -1);
+		}
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_PROFILE:
+		if (query_menu->index != V4L2_MPEG_VIDEO_VP8_PROFILE_0) {
+			LOGV(1, "unsupported VP8 profile: %x\n",
+			     query_menu->index);
+			RETURN_ERR(EINVAL, -1);
+		}
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP9_PROFILE:
+		switch (query_menu->index) {
+		case V4L2_MPEG_VIDEO_VP9_PROFILE_0:
+		case V4L2_MPEG_VIDEO_VP9_PROFILE_2:
+			break;
+		default:
+			LOGV(1, "unsupported VP9 profile: %x\n",
+			     query_menu->index);
+			RETURN_ERR(EINVAL, -1);
+		}
+		break;
+	default:
+		LOGV(1, "unsupported menu: %x\n", query_menu->id);
+		RETURN_ERR(EINVAL, -1);
+	}
+
+	LEAVE();
+	return 0;
+}
+
 static int rkmpp_try_dec_cmd(struct rkmpp_dec_context *dec,
 			     struct v4l2_decoder_cmd *cmd)
 {
@@ -906,6 +1010,12 @@ int rkmpp_dec_ioctl(void *data, unsigned long cmd, void *arg)
 		break;
 	case VIDIOC_G_EXT_CTRLS:
 		ret = rkmpp_dec_g_ext_ctrls(dec, arg);
+		break;
+	case VIDIOC_QUERYCTRL:
+		ret = rkmpp_dec_queryctrl(dec, arg);
+		break;
+	case VIDIOC_QUERYMENU:
+		ret = rkmpp_dec_querymenu(dec, arg);
 		break;
 	case VIDIOC_TRY_DECODER_CMD:
 		ret = rkmpp_try_dec_cmd(dec, arg);

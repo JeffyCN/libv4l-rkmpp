@@ -33,6 +33,23 @@
 #include "config.h"
 #include "linux/videodev2.h"
 
+#ifndef V4L2_CID_MPEG_VIDEO_VP9_PROFILE
+#define V4L2_CID_MPEG_VIDEO_VP9_PROFILE		(V4L2_CID_CODEC_BASE+512)
+#define V4L2_MPEG_VIDEO_VP9_PROFILE_0		0
+#define V4L2_MPEG_VIDEO_VP9_PROFILE_2		2
+#endif
+
+#ifndef V4L2_CID_MPEG_VIDEO_HEVC_PROFILE
+#define V4L2_CID_MPEG_VIDEO_HEVC_PROFILE	(V4L2_CID_CODEC_BASE + 615)
+#define V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN	0
+#define V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10	2
+#endif
+
+#ifndef V4L2_CID_MPEG_VIDEO_AV1_PROFILE
+#define V4L2_CID_MPEG_VIDEO_AV1_PROFILE		(V4L2_CID_CODEC_BASE + 655)
+#define V4L2_MPEG_VIDEO_AV1_PROFILE_MAIN	0
+#endif
+
 #define LIBV4L_RKMPP_VERSION "1.7.0~20240325"
 
 extern int rkmpp_log_level;
@@ -87,7 +104,7 @@ extern int rkmpp_log_level;
 #define RKMPP_MB_DIM		16
 #define RKMPP_SB_DIM		64
 
-#define RKMPP_MAX_PLANE		3
+#define RKMPP_MAX_PLANES	3
 
 #define RKMPP_MEM_OFFSET(type, index) \
 	((int64_t) ((type) << 16 | (index)))
@@ -174,7 +191,7 @@ struct rkmpp_buffer {
 		uint32_t bytesused;
 		uint32_t plane_size; /* bytesused - data_offset */
 		uint32_t length;
-	} planes[RKMPP_MAX_PLANE];
+	} planes[RKMPP_MAX_PLANES];
 };
 
 TAILQ_HEAD(rkmpp_buf_head, rkmpp_buffer);

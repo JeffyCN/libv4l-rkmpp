@@ -847,7 +847,15 @@ static int rkmpp_enc_queryctrl(struct rkmpp_enc_context *enc,
 		query_ctrl->minimum = V4L2_MPEG_VIDEO_BITRATE_MODE_VBR;
 		query_ctrl->maximum = V4L2_MPEG_VIDEO_BITRATE_MODE_CBR;
 		break;
-	/* TODO: fill info for other supported ctrls */
+	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
+		query_ctrl->minimum = V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE;
+		query_ctrl->maximum = V4L2_MPEG_VIDEO_H264_PROFILE_HIGH;
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_PROFILE:
+		query_ctrl->minimum = V4L2_MPEG_VIDEO_VP8_PROFILE_0;
+		query_ctrl->maximum = query_ctrl->minimum;
+		break;
+		/* TODO: fill info for other supported ctrls */
 	default:
 		LOGV(1, "unsupported ctrl: %x\n", query_ctrl->id);
 		RETURN_ERR(EINVAL, -1);
@@ -864,18 +872,40 @@ static int rkmpp_enc_querymenu(struct rkmpp_enc_context *enc,
 
 	ENTER();
 
-	if (query_menu->id != V4L2_CID_MPEG_VIDEO_BITRATE_MODE) {
-		LOGV(1, "unsupported menu: %x\n", query_menu->id);
-		RETURN_ERR(EINVAL, -1);
-	}
-
-	switch (query_menu->index) {
-	case V4L2_MPEG_VIDEO_BITRATE_MODE_VBR:
+	switch (query_menu->id) {
+	case V4L2_CID_MPEG_VIDEO_BITRATE_MODE:
+		switch (query_menu->index) {
+		case V4L2_MPEG_VIDEO_BITRATE_MODE_VBR:
+			break;
+		case V4L2_MPEG_VIDEO_BITRATE_MODE_CBR:
+			break;
+		default:
+			LOGV(1, "unsupported bitrate mode: %x\n",
+			     query_menu->index);
+			RETURN_ERR(EINVAL, -1);
+		}
 		break;
-	case V4L2_MPEG_VIDEO_BITRATE_MODE_CBR:
+	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
+		switch (query_menu->index) {
+		case V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE:
+		case V4L2_MPEG_VIDEO_H264_PROFILE_MAIN:
+		case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH:
+			break;
+		default:
+			LOGV(1, "unsupported H264 profile: %x\n",
+			     query_menu->index);
+			RETURN_ERR(EINVAL, -1);
+		}
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_PROFILE:
+		if (query_menu->index != V4L2_MPEG_VIDEO_VP8_PROFILE_0) {
+			LOGV(1, "unsupported VP8 profile: %x\n",
+			     query_menu->index);
+			RETURN_ERR(EINVAL, -1);
+		}
 		break;
 	default:
-		LOGV(1, "unsupported bitrate mode: %x\n", query_menu->index);
+		LOGV(1, "unsupported menu: %x\n", query_menu->id);
 		RETURN_ERR(EINVAL, -1);
 	}
 
