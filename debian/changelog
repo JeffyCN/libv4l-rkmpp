@@ -1,3 +1,14 @@
+libv4l-rkmpp (1.7.1-1) stable; urgency=medium
+
+  * df2e70e Fix extra event after dqbuf()
+  * 6c475e0 Drop rga
+  * ba058a8 d/control: Update build-deps
+  * 3d6edc4 Fix compile warning
+  * fb10c83 Support query profiles
+  * 574bde8 Fix compile error with older kernel headers
+
+ -- Jeffy Chen <jeffy.chen@rock-chips.com>  Tue, 18 Jun 2024 15:11:03 +0800
+
 libv4l-rkmpp (1.7.0-1) stable; urgency=medium
 
   * enc: Support bitrate mode for new chromium V4L2 video encoder
