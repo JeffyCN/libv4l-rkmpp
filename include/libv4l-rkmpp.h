@@ -33,6 +33,14 @@
 #include "config.h"
 #include "linux/videodev2.h"
 
+#ifndef V4L2_CTRL_CLASS_CODEC
+#define V4L2_CTRL_CLASS_CODEC			0x00990000
+#endif
+
+#ifndef V4L2_CID_CODEC_BASE
+#define V4L2_CID_CODEC_BASE			(V4L2_CTRL_CLASS_CODEC | 0x900)
+#endif
+
 #ifndef V4L2_CID_MPEG_VIDEO_VP9_PROFILE
 #define V4L2_CID_MPEG_VIDEO_VP9_PROFILE		(V4L2_CID_CODEC_BASE+512)
 #define V4L2_MPEG_VIDEO_VP9_PROFILE_0		0
