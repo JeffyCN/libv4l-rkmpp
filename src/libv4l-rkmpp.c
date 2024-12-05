@@ -664,7 +664,7 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 			return -1;
 		}
 
-		usleep(1000);
+		pthread_cond_wait(&ctx->ioctl_cond, &ctx->ioctl_mutex);
 	}
 
 	pthread_mutex_lock(&queue->queue_mutex);
@@ -955,6 +955,7 @@ static void *plugin_init(int fd)
 	close(epollfd);
 
 	pthread_mutex_init(&ctx->ioctl_mutex, NULL);
+	pthread_cond_init(&ctx->ioctl_cond, NULL);
 	pthread_mutex_init(&ctx->output.queue_mutex, NULL);
 	pthread_mutex_init(&ctx->capture.queue_mutex, NULL);
 	pthread_cond_init(&ctx->worker_cond, NULL);

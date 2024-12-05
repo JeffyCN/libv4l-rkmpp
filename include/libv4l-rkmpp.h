@@ -282,6 +282,7 @@ struct rkmpp_context {
 	struct rkmpp_buf_queue capture;
 
 	pthread_mutex_t ioctl_mutex;
+	pthread_cond_t ioctl_cond;
 
 	pthread_t worker_thread;
 	pthread_cond_t worker_cond;

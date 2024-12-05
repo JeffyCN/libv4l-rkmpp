@@ -380,6 +380,7 @@ static void *encoder_thread_fn(void *data)
 				  rkmpp_buffer, entry);
 		rkmpp_buffer_set_available(rkmpp_buffer);
 		pthread_mutex_unlock(&ctx->capture.queue_mutex);
+		pthread_cond_signal(&ctx->ioctl_cond);
 next_locked:
 		pthread_mutex_unlock(&ctx->ioctl_mutex);
 next:
