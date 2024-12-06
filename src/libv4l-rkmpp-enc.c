@@ -99,6 +99,21 @@ static struct rkmpp_fmt rkmpp_enc_fmts[] = {
 			.step_height = RKMPP_MB_DIM,
 		},
 	},
+    {
+		.name = "MJPEG",
+		.fourcc = V4L2_PIX_FMT_MJPEG,
+		.num_planes = 1,
+		.type = MPP_VIDEO_CodingMJPEG,
+		.format = MPP_FMT_BUTT,
+		.frmsize = {
+			.min_width = 96,
+			.max_width = 1920,
+			.step_width = RKMPP_MB_DIM,
+			.min_height = 96,
+			.max_height = 1088,
+			.step_height = RKMPP_MB_DIM,
+		}
+	}
 };
 
 static int rkmpp_enc_apply_rc_cfg(struct rkmpp_enc_context *enc);
@@ -499,6 +514,38 @@ err:
 	RETURN_ERR(EINVAL, -1);
 }
 
+static int rkmpp_enc_apply_mjpeg_cfg(struct rkmpp_enc_context *enc)
+{
+	struct rkmpp_context *ctx = enc->ctx;
+	MppEncCfg cfg;
+	MPP_RET ret;
+
+	if (mpp_enc_cfg_init(&cfg)) {
+		LOGE("failed to init enc config\n");
+		RETURN_ERR(ENOMEM, -1);
+	}
+
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_GET_CFG, cfg);
+	if (ret != MPP_OK) {
+		LOGE("failed to get enc config\n");
+		goto err;
+	}
+
+	mpp_enc_cfg_set_s32(cfg, "jpeg:q_factor", enc->mjpeg.quality ? enc->mjpeg.quality : 80);
+
+	ret = ctx->mpi->control(ctx->mpp, MPP_ENC_SET_CFG, cfg);
+	if (ret != MPP_OK) {
+		LOGE("failed to set enc config: %d\n", ret);
+		goto err;
+	}
+
+	mpp_enc_cfg_deinit(cfg);
+	return 0;
+err:
+	mpp_enc_cfg_deinit(cfg);
+	RETURN_ERR(EINVAL, -1);
+}
+
 static int rkmpp_enc_apply_input_cfg(struct rkmpp_enc_context *enc)
 {
 	struct rkmpp_context *ctx = enc->ctx;
@@ -672,6 +719,9 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 	case V4L2_PIX_FMT_VP8:
 		enc->type = VP8;
 		break;
+	case V4L2_PIX_FMT_MJPEG:
+		enc->type = MJPEG;
+		break;
 	default:
 		RETURN_ERR(errno, -1);
 	}
@@ -713,6 +763,12 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 		/* Apply vp8's special configs */
 		if (rkmpp_enc_apply_vp8_cfg(enc) < 0) {
 			LOGE("failed to apply vp8 cfg\n");
+			goto err_destroy_mpp;
+		}
+	} else if (enc->type == MJPEG) {
+		/* Apply mjpeg's special configs */
+		if (rkmpp_enc_apply_mjpeg_cfg(enc) < 0) {
+			LOGE("failed to apply mjpeg cfg\n");
 			goto err_destroy_mpp;
 		}
 	}
@@ -1145,6 +1201,16 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			if (ctx->mpp_streaming &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply fixed bitrate\n");
+				RETURN_ERR(errno, -1);
+			}
+			break;
+		case V4L2_CID_JPEG_COMPRESSION_QUALITY:
+			enc->mjpeg.quality = ctrl->value;
+			LOGV(1, "jpeg quality: %d\n", enc->mjpeg.quality);
+
+			if (ctx->mpp_streaming &&
+			    rkmpp_enc_apply_mjpeg_cfg(enc) < 0) {
+				LOGE("failed to apply compression quality\n");
 				RETURN_ERR(errno, -1);
 			}
 			break;

@@ -33,6 +33,7 @@
  * @ctx:		Common context data.
  * @h264:		Enc config for H264.
  * @vp8:		Enc config for VP8.
+ * @mjpeg:		Enc config for MJPEG.
  * @type:		Encoder format type.
  * @needs_header:	Needs to process header.
  * @header:		Header packet.
@@ -65,9 +66,14 @@ struct rkmpp_enc_context {
 		bool is_ivf;
 	} vp8;
 
+	struct {
+		int quality;
+	} mjpeg;
+
 	enum {
 		H264,
 		VP8,
+		MJPEG,
 	} type;
 
 	int max_qp;
