@@ -308,6 +308,7 @@ static void *encoder_thread_fn(void *data)
 			ret = ctx->mpi->encode_get_packet(ctx->mpp, &packet);
 			if (ret != MPP_OK) {
 				LOGE("failed to get packet\n");
+				pthread_mutex_unlock(&ctx->worker_mutex);
 				goto next;
 			}
 		}
@@ -759,8 +760,6 @@ static int rkmpp_enc_streamoff(struct rkmpp_enc_context *enc,
 	LOGV(1, "queue(%d) stop streaming\n", *type);
 
 	rkmpp_reset_queue(ctx, queue);
-
-	pthread_mutex_lock(&ctx->worker_mutex);
 
 	/* Stop mpp streaming when any queue stopped */
 	rkmpp_streamoff(ctx);
