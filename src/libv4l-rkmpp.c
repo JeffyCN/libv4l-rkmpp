@@ -116,12 +116,12 @@ void rkmpp_reset_queue(struct rkmpp_context *ctx,
 
 	ENTER();
 
-	queue->streaming = false;
-
 	/* Hand over all buffers to userspace */
 	pthread_mutex_lock(&queue->queue_mutex);
+	queue->streaming = false;
 	TAILQ_INIT(&queue->avail_buffers);
 	TAILQ_INIT(&queue->pending_buffers);
+	pthread_cond_signal(&queue->queue_cond);
 	pthread_mutex_unlock(&queue->queue_mutex);
 
 	/* Update poll event after avail list changed */
@@ -644,27 +644,21 @@ int rkmpp_qbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 	return 0;
 }
 
-int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
+static int rkmpp_try_dqbuf(struct rkmpp_context *ctx,
+			   struct rkmpp_buf_queue *queue,
+			   struct v4l2_buffer *buffer)
 {
-	struct rkmpp_buf_queue *queue;
 	struct rkmpp_buffer *rkmpp_buffer;
 	int ret;
 
-	ENTER();
+	if (!queue->streaming) {
+		LOGE("cannot dequeue buffer when not streaming\n");
+		RETURN_ERR(EINVAL, -1);
+	}
 
-	queue = rkmpp_get_queue(ctx, buffer->type);
-	if (!queue)
-		RETURN_ERR(errno, -1);
-
-	/* Wait for buffers in block mode */
-	while (TAILQ_EMPTY(&queue->avail_buffers)) {
-		if (ctx->nonblock) {
-			LOGV(5, "queue is empty\n");
-			errno = EAGAIN;
-			return -1;
-		}
-
-		usleep(1000);
+	if (TAILQ_EMPTY(&queue->avail_buffers)) {
+		errno = EAGAIN;
+		return -1;
 	}
 
 	pthread_mutex_lock(&queue->queue_mutex);
@@ -693,6 +687,37 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 
 	LEAVE();
 	return 0;
+}
+
+int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
+{
+	struct rkmpp_buf_queue *queue;
+	int ret;
+
+	ENTER();
+
+	queue = rkmpp_get_queue(ctx, buffer->type);
+	if (!queue)
+		RETURN_ERR(errno, -1);
+
+	while (true) {
+		ret = rkmpp_try_dqbuf(ctx, queue, buffer);
+		if (!ret || errno != EAGAIN || ctx->nonblock)
+			break;
+
+		/* Wait for buffers in block mode */
+
+		/* Unlock it to let the worker thread run */
+		pthread_mutex_unlock(&ctx->ioctl_mutex);
+		pthread_mutex_lock(&queue->queue_mutex);
+		pthread_cond_wait(&queue->queue_cond,
+				  &queue->queue_mutex);
+		pthread_mutex_unlock(&queue->queue_mutex);
+		pthread_mutex_lock(&ctx->ioctl_mutex);
+	}
+
+	LEAVE();
+	return ret;
 }
 
 void rkmpp_streamon(struct rkmpp_context *ctx)
@@ -955,7 +980,9 @@ static void *plugin_init(int fd)
 	close(epollfd);
 
 	pthread_mutex_init(&ctx->ioctl_mutex, NULL);
+	pthread_cond_init(&ctx->output.queue_cond, NULL);
 	pthread_mutex_init(&ctx->output.queue_mutex, NULL);
+	pthread_cond_init(&ctx->capture.queue_cond, NULL);
 	pthread_mutex_init(&ctx->capture.queue_mutex, NULL);
 	pthread_cond_init(&ctx->worker_cond, NULL);
 	pthread_mutex_init(&ctx->worker_mutex, NULL);

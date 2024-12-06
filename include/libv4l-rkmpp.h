@@ -214,6 +214,7 @@ TAILQ_HEAD(rkmpp_buf_head, rkmpp_buffer);
  * @num_buffers:	Number of buffers.
  * @avail_buffers:	Buffers ready to be dequeued.
  * @pending_buffers:	Pending buffers for mpp.
+ * @queue_cond:		Condition variable for buffer litsts.
  * @queue_mutex:	Mutex for buffer lists.
  * @rkmpp_format:	Mpp format.
  * @format:		V4L2 multi-plane format.
@@ -230,6 +231,7 @@ struct rkmpp_buf_queue {
 
 	struct rkmpp_buf_head avail_buffers;
 	struct rkmpp_buf_head pending_buffers;
+	pthread_cond_t queue_cond;
 	pthread_mutex_t queue_mutex;
 
 	const struct rkmpp_fmt *rkmpp_format;

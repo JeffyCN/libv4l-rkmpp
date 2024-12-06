@@ -250,6 +250,7 @@ static void rkmpp_send_header(struct rkmpp_enc_context *enc)
 	TAILQ_INSERT_TAIL(&ctx->capture.avail_buffers,
 			  rkmpp_buffer, entry);
 	rkmpp_buffer_set_available(rkmpp_buffer);
+	pthread_cond_signal(&ctx->capture.queue_cond);
 	pthread_mutex_unlock(&ctx->capture.queue_mutex);
 
 	LEAVE();
@@ -367,6 +368,7 @@ static void *encoder_thread_fn(void *data)
 		TAILQ_INSERT_TAIL(&ctx->output.avail_buffers,
 				  frame_buffer, entry);
 		rkmpp_buffer_set_available(frame_buffer);
+		pthread_cond_signal(&ctx->output.queue_cond);
 		pthread_mutex_unlock(&ctx->output.queue_mutex);
 
 		/* Report new frame to count fps */
@@ -380,6 +382,7 @@ static void *encoder_thread_fn(void *data)
 		TAILQ_INSERT_TAIL(&ctx->capture.avail_buffers,
 				  rkmpp_buffer, entry);
 		rkmpp_buffer_set_available(rkmpp_buffer);
+		pthread_cond_signal(&ctx->capture.queue_cond);
 		pthread_mutex_unlock(&ctx->capture.queue_mutex);
 next_locked:
 		pthread_mutex_unlock(&ctx->ioctl_mutex);
@@ -738,7 +741,7 @@ err_destroy_mpp:
 	ctx->mpi->reset(ctx->mpp);
 	mpp_destroy(ctx->mpp);
 err:
-	queue->streaming = false;
+	rkmpp_reset_queue(ctx, queue);
 	RETURN_ERR(EPIPE, -1);
 }
 
