@@ -200,17 +200,17 @@ int rkmpp_querycap(struct rkmpp_context *ctx, struct v4l2_capability *cap)
 int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 {
 	const struct rkmpp_fmt *fmt;
-	bool compressed;
+	bool coded;
 	unsigned int i, j;
 
 	ENTER();
 
 	switch (f->type) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-		compressed = !ctx->is_decoder;
+		coded = !ctx->is_decoder;
 		break;
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-		compressed = ctx->is_decoder;
+		coded = ctx->is_decoder;
 		break;
 	default:
 		LOGE("invalid buf type\n");
@@ -219,9 +219,9 @@ int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 
 	for (i = 0, j = 0; i < ctx->num_formats; ++i) {
 		fmt = &ctx->formats[i];
-		if (!compressed && (fmt->type != MPP_VIDEO_CodingNone))
+		if (!coded && (fmt->type != MPP_VIDEO_CodingNone))
 			continue;
-		else if (compressed && (fmt->type == MPP_VIDEO_CodingNone))
+		else if (coded && (fmt->type == MPP_VIDEO_CodingNone))
 			continue;
 		else if (!RKMPP_HAS_FORMAT(ctx, &ctx->formats[i]))
 			continue;
@@ -243,7 +243,7 @@ int rkmpp_enum_fmt(struct rkmpp_context *ctx, struct v4l2_fmtdesc *f)
 	}
 
 	LOGV(1, "%s format(%d) not found\n",
-	     compressed ? "compressed" : "raw", f->index);
+	     coded ? "coded" : "raw", f->index);
 	RETURN_ERR(EINVAL, -1);
 }
 
@@ -298,16 +298,16 @@ int rkmpp_try_fmt(struct rkmpp_context *ctx, struct v4l2_format *f)
 {
 	const struct rkmpp_fmt *fmt;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
-	bool compressed;
+	bool coded;
 
 	ENTER();
 
 	switch (f->type) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-		compressed = !ctx->is_decoder;
+		coded = !ctx->is_decoder;
 		break;
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-		compressed = ctx->is_decoder;
+		coded = ctx->is_decoder;
 		break;
 	default:
 		LOGE("invalid buf type\n");
@@ -317,13 +317,13 @@ int rkmpp_try_fmt(struct rkmpp_context *ctx, struct v4l2_format *f)
 	fmt = rkmpp_find_fmt(ctx, pix_fmt_mp->pixelformat);
 	if (!fmt) {
 		LOGE("failed to find %s format\n",
-		     compressed ? "compressed" : "raw");
+		     coded ? "coded" : "raw");
 		RETURN_ERR(EINVAL, -1);
 	}
 
-	if (compressed) {
+	if (coded) {
 		if (pix_fmt_mp->plane_fmt[0].sizeimage == 0) {
-			LOGE("sizeimage of compressed format must be given\n");
+			LOGE("sizeimage of coded format must be given\n");
 			RETURN_ERR(EINVAL, -1);
 		}
 
@@ -336,18 +336,27 @@ int rkmpp_try_fmt(struct rkmpp_context *ctx, struct v4l2_format *f)
 		/* Use the decoded video format info */
 		*pix_fmt_mp = queue->format;
 	} else {
-		struct rkmpp_buf_queue *queue =
-			ctx->is_decoder ? &ctx->output : &ctx->capture;
+		const struct rkmpp_fmt *coded_fmt;
+
+		if (ctx->is_decoder)
+			coded_fmt = ctx->output.rkmpp_format;
+		else
+			coded_fmt = ctx->capture.rkmpp_format;
 
 		pix_fmt_mp->num_planes = fmt->num_planes;
 
-		/* Limit to hardware min/max. */
-		pix_fmt_mp->width = clamp(pix_fmt_mp->width,
-					  queue->rkmpp_format->frmsize.min_width,
-					  queue->rkmpp_format->frmsize.max_width);
-		pix_fmt_mp->height = clamp(pix_fmt_mp->height,
-					   queue->rkmpp_format->frmsize.min_height,
-					   queue->rkmpp_format->frmsize.max_height);
+		if (!coded_fmt) {
+			LOGE("the coded format isn't configured\n");
+		} else {
+			/* Limit to hardware min/max. */
+			pix_fmt_mp->width = clamp(pix_fmt_mp->width,
+						  coded_fmt->frmsize.min_width,
+						  coded_fmt->frmsize.max_width);
+			pix_fmt_mp->height = clamp(pix_fmt_mp->height,
+						   coded_fmt->frmsize.min_height,
+						   coded_fmt->frmsize.max_height);
+		}
+
 		/* Round up to macroblocks. */
 		pix_fmt_mp->width = round_up(pix_fmt_mp->width, RKMPP_MB_DIM);
 		pix_fmt_mp->height = round_up(pix_fmt_mp->height, RKMPP_MB_DIM);
