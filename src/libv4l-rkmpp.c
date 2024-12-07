@@ -336,18 +336,27 @@ int rkmpp_try_fmt(struct rkmpp_context *ctx, struct v4l2_format *f)
 		/* Use the decoded video format info */
 		*pix_fmt_mp = queue->format;
 	} else {
-		struct rkmpp_buf_queue *queue =
-			ctx->is_decoder ? &ctx->output : &ctx->capture;
+		const struct rkmpp_fmt *codec_fmt;
+
+		if (ctx->is_decoder)
+			codec_fmt = ctx->output.rkmpp_format;
+		else
+			codec_fmt = ctx->capture.rkmpp_format;
 
 		pix_fmt_mp->num_planes = fmt->num_planes;
 
-		/* Limit to hardware min/max. */
-		pix_fmt_mp->width = clamp(pix_fmt_mp->width,
-					  queue->rkmpp_format->frmsize.min_width,
-					  queue->rkmpp_format->frmsize.max_width);
-		pix_fmt_mp->height = clamp(pix_fmt_mp->height,
-					   queue->rkmpp_format->frmsize.min_height,
-					   queue->rkmpp_format->frmsize.max_height);
+		if (!codec_fmt) {
+			LOGE("the codec format isn't configured\n");
+		} else {
+			/* Limit to hardware min/max. */
+			pix_fmt_mp->width = clamp(pix_fmt_mp->width,
+						  codec_fmt->frmsize.min_width,
+						  codec_fmt->frmsize.max_width);
+			pix_fmt_mp->height = clamp(pix_fmt_mp->height,
+						   codec_fmt->frmsize.min_height,
+						   codec_fmt->frmsize.max_height);
+		}
+
 		/* Round up to macroblocks. */
 		pix_fmt_mp->width = round_up(pix_fmt_mp->width, RKMPP_MB_DIM);
 		pix_fmt_mp->height = round_up(pix_fmt_mp->height, RKMPP_MB_DIM);
