@@ -567,7 +567,7 @@ static int rkmpp_enc_apply_input_cfg(struct rkmpp_enc_context *enc)
 
 	enc->width = enc->crop.width ? enc->crop.width : fmt->width;
 	enc->height = enc->crop.height ? enc->crop.height : fmt->height;
-	enc->hstride = fmt->plane_fmt[0].bytesperline * 8 / rkmpp_fmt->depth[0];
+	enc->hstride = fmt->plane_fmt[0].bytesperline;
 	enc->vstride = fmt->plane_fmt[0].sizeimage /
 		fmt->plane_fmt[0].bytesperline;
 
