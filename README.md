@@ -53,8 +53,6 @@ The original idea comes from [v4l-gst](https://github.com/igel-oss/v4l-gst).
 
 1. There're a lot of chromium related hacks in it, might not work for other apps.  
 
-   For proper decoding usage, there's a [ffmpeg solution](https://github.com/JeffyCN/FFmpeg) with a few extra buffer copies.
-
 ## FAQ
 
 1. MPP reports errors?  
