@@ -1,3 +1,11 @@
+libv4l-rkmpp (1.9.0-1) stable; urgency=medium
+
+  * 0b73ff6 dec: Reserve one more capture buffer for format conversion
+  * 0dc5a31 dec: Convert non-NV12 frames via the conversion tiers
+  * c062917 convert: Add three-tier capture format conversion
+
+ -- Jeffy Chen <jeffy.chen@rock-chips.com>  Sat, 11 Oct 2026 18:35:12 +0800
+
 libv4l-rkmpp (1.8.0-1) stable; urgency=medium
 
   * 23f970c enc: Fix worker_mutex error

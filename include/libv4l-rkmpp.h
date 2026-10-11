@@ -58,7 +58,7 @@
 #define V4L2_MPEG_VIDEO_AV1_PROFILE_MAIN	0
 #endif
 
-#define LIBV4L_RKMPP_VERSION "1.8.0~20250108"
+#define LIBV4L_RKMPP_VERSION "1.9.0~20261011"
 
 extern int rkmpp_log_level;
 
