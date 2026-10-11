@@ -1126,9 +1126,28 @@ int rkmpp_dec_ioctl(void *data, unsigned long cmd, void *arg)
 	case VIDIOC_S_FMT:
 		ret = rkmpp_s_fmt(ctx, arg);
 		break;
-	case VIDIOC_REQBUFS:
+	case VIDIOC_REQBUFS: {
+		/*
+		 * Non-NV12 frames (HEVC Main10 / H.264 High 4:2:2) are
+		 * converted into a spare capture buffer taken from the
+		 * mpp pool. Ask for one extra buffer so chromium's
+		 * working set never starves the converter, and report
+		 * the incremented count back to the caller. Before the
+		 * first info change the format is unknown; reserve the
+		 * spare unconditionally then, so the very first
+		 * non-NV12 stream is covered too.
+		 */
+		struct v4l2_requestbuffers *reqbufs = arg;
+
+		if (reqbufs->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
+		    reqbufs->count &&
+		    (!dec->video_info.valid ||
+		     dec->video_info.mpp_format != MPP_FMT_YUV420SP))
+			reqbufs->count++;
+
 		ret = rkmpp_reqbufs(ctx, arg);
 		break;
+	}
 	case VIDIOC_QUERYBUF:
 		ret = rkmpp_querybuf(ctx, arg);
 		break;
