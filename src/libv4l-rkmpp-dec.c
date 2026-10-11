@@ -15,8 +15,14 @@
 #include <signal.h>
 
 #include "libv4l-rkmpp-dec.h"
+#include "libv4l-rkmpp-convert.h"
 
 #define RKMPP_DEC_POLL_TIMEOUT_MS	500
+
+/* Max cond-wait rounds for a free capture buffer during format
+ * conversion before dropping the frame (each round ends when
+ * chromium qbufs a buffer back). */
+#define RKMPP_DEC_CVT_BUF_WAITS		30
 
 static struct rkmpp_fmt rkmpp_dec_fmts[] = {
 	{
@@ -285,6 +291,15 @@ static void rkmpp_apply_info_change(struct rkmpp_dec_context *dec,
 	/*
 	 * Use ver_stride as new height, the visible rect would be returned
 	 * in g_selection.
+	 *
+	 * Pixel format selection:
+	 *   - if MPP gave us 8-bit 4:2:0 (NV12), advertise NV12 directly.
+	 *   - if MPP gave us 10-bit or 4:2:2 (P010 / NV16), advertise NV12
+	 *     anyway and rely on the worker thread to RGA-blit every frame
+	 *     into the spare buffer.
+	 *
+	 * The hard assert that used to live here has been removed: it
+	 * aborted on HEVC Main10 and H.264 High 4:2:2.
 	 */
 	ctx->capture.format.num_planes = 1;
 	ctx->capture.format.width = dec->video_info.hor_stride;
@@ -293,8 +308,6 @@ static void rkmpp_apply_info_change(struct rkmpp_dec_context *dec,
 		dec->video_info.hor_stride;
 	ctx->capture.format.plane_fmt[0].sizeimage =
 		dec->video_info.size;
-
-	assert(dec->video_info.mpp_format == MPP_FMT_YUV420SP);
 	ctx->capture.format.pixelformat = V4L2_PIX_FMT_NV12;
 
 	LEAVE();
@@ -397,7 +410,115 @@ static void *decoder_thread_fn(void *data)
 			rkmpp_buffer->bytesused = 0;
 			rkmpp_buffer_set_error(rkmpp_buffer);
 		} else {
-			/* Size of NV12 image */
+			/*
+			 * Non-NV12 frames (HEVC Main10 -> P010, H.264
+			 * 4:2:2 -> NV16) are converted into any free
+			 * capture buffer taken straight from the mpp
+			 * pool. The converted buffer follows the exact
+			 * lifecycle of a normal frame (locked ref until
+			 * chromium qbufs it back), so no special casing
+			 * is needed in qbuf/put_frames paths.
+			 *
+			 * When the pool is empty (all buffers held by
+			 * chromium) wait for a qbuf to free one; give up
+			 * and drop the frame after a bounded time.
+			 */
+			MppFrameFormat frame_fmt = mpp_frame_get_fmt(frame);
+			if (frame_fmt != MPP_FMT_YUV420SP) {
+				MppBuffer tmp_buf = NULL;
+				bool got = false;
+				int waits;
+				struct timespec ts;
+
+				for (waits = 0;
+				     waits < RKMPP_DEC_CVT_BUF_WAITS &&
+				     ctx->mpp_streaming; waits++) {
+					if (mpp_buffer_get(
+						    ctx->capture.external_group,
+						    &tmp_buf,
+						    dec->video_info.size) == MPP_OK) {
+						got = true;
+						break;
+					}
+
+					/*
+					 * Pool empty: release ioctl_mutex so
+					 * the ioctl thread can qbuf buffers
+					 * back, then sleep until it signals
+					 * the capture queue (or 100ms pass,
+					 * whichever first -- the signal may
+					 * fire before put_frames actually
+					 * releases a buffer, so the timeout
+					 * keeps us from sleeping forever on
+					 * a missed wakeup).
+					 */
+					LOGV(4, "no free capture buf, waiting\n");
+					clock_gettime(CLOCK_REALTIME, &ts);
+					ts.tv_nsec += 100 * 1000 * 1000;
+					if (ts.tv_nsec >= 1000000000) {
+						ts.tv_sec++;
+						ts.tv_nsec -= 1000000000;
+					}
+					pthread_mutex_unlock(&ctx->ioctl_mutex);
+					pthread_mutex_lock(&ctx->capture.queue_mutex);
+					pthread_cond_timedwait(&ctx->capture.queue_cond,
+							       &ctx->capture.queue_mutex,
+							       &ts);
+					pthread_mutex_unlock(&ctx->capture.queue_mutex);
+					pthread_mutex_lock(&ctx->ioctl_mutex);
+				}
+
+				if (!got) {
+					LOGV(2, "no free capture buf, drop frame(%lld)\n",
+					     mpp_frame_get_pts(frame));
+					mpp_buffer_put(buffer);
+					goto next_locked;
+				}
+
+				index = mpp_buffer_get_index(tmp_buf);
+				if (index < 0 ||
+				    index >= (int)ctx->capture.num_buffers) {
+					LOGE("invalid convert buffer index\n");
+					mpp_buffer_put(tmp_buf);
+					mpp_buffer_put(buffer);
+					goto next_locked;
+				}
+
+				struct rkmpp_buffer *dst =
+					&ctx->capture.buffers[index];
+
+				if (rkmpp_dec_convert_frame(
+					    ctx, rkmpp_buffer, dst,
+					    frame_fmt, MPP_FMT_YUV420SP,
+					    dec->video_info.width,
+					    dec->video_info.height,
+					    dec->video_info.hor_stride,
+					    dec->video_info.ver_stride)) {
+					mpp_buffer_put(tmp_buf);
+					mpp_buffer_put(buffer);
+					goto next_locked;
+				}
+
+				/*
+				 * Conversion done: return the raw buffer
+				 * (and its extra ref) to mpp's pool right
+				 * away, then hand the converted buffer to
+				 * chromium like a normal frame. The tmp
+				 * buffer keeps the ref from the
+				 * mpp_buffer_get above (LOCKED). The raw
+				 * buffer's LOCKED flag is cleared just
+				 * like put_frames() does, otherwise the
+				 * stale flag leaks back into the pool.
+				 */
+				mpp_buffer_put(buffer);
+				rkmpp_buffer_clr_locked(rkmpp_buffer);
+				rkmpp_buffer = dst;
+				rkmpp_buffer->timestamp =
+					mpp_frame_get_pts(frame);
+				rkmpp_buffer_set_locked(rkmpp_buffer);
+			}
+
+			/* Size of NV12 image (we always advertise NV12) */
 			rkmpp_buffer->bytesused = dec->video_info.hor_stride *
 				dec->video_info.ver_stride * 3 / 2;
 		}
@@ -443,6 +564,18 @@ static int rkmpp_dec_qbuf(struct rkmpp_dec_context *dec,
 		RETURN_ERR(errno, -1);
 
 	rkmpp_feed_mpp(dec);
+
+	/*
+	 * rkmpp_qbuf does not signal the capture queue (it only marks
+	 * the buffer pending). Signal here so a converter waiting for a
+	 * free capture buffer cannot sleep through the release that
+	 * put_frames did inside rkmpp_feed_mpp().
+	 */
+	if (buffer->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		pthread_mutex_lock(&ctx->capture.queue_mutex);
+		pthread_cond_signal(&ctx->capture.queue_cond);
+		pthread_mutex_unlock(&ctx->capture.queue_mutex);
+	}
 
 	LEAVE();
 	return ret;
@@ -567,6 +700,29 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 	if (ret != MPP_OK) {
 		LOGE("failed to init mpp\n");
 		goto err_destroy_mpp;
+	}
+
+	/* Try to convince MPP / the kernel driver to always hand us
+	 * 8-bit 4:2:0 NV12, regardless of the bitstream's native
+	 * pixel format. This is the cheap path for 10-bit HEVC and
+	 * 4:2:2 H.264: when the hardware can do the conversion
+	 * itself, the spare-buffer + RGA path stays idle.
+	 *
+	 * If MPP / the kernel refuses, the worker thread will see a
+	 * non-NV12 mpp_format in the info-change event and route the
+	 * frame through rkmpp_dec_convert_frame() instead.
+	 */
+	{
+		MppFrameFormat want_fmt = MPP_FMT_YUV420SP;
+		ret = ctx->mpi->control(ctx->mpp,
+					MPP_DEC_SET_OUTPUT_FORMAT,
+					&want_fmt);
+		if (ret == MPP_OK) {
+			LOGV(1, "MPP_DEC_SET_OUTPUT_FORMAT=NV12 accepted\n");
+		} else {
+			LOGV(1, "MPP_DEC_SET_OUTPUT_FORMAT=NV12 rejected (%d), "
+			     "fallback to plugin-side RGA conversion\n", ret);
+		}
 	}
 
 	/* The chromium will do the split */
@@ -749,7 +905,7 @@ static int rkmpp_dec_queryctrl(struct rkmpp_dec_context *dec,
 	switch (query_ctrl->id) {
 	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
 		query_ctrl->minimum = V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE;
-		query_ctrl->maximum = V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_10;
+		query_ctrl->maximum = V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_422;
 		break;
 	case V4L2_CID_MPEG_VIDEO_HEVC_PROFILE:
 		query_ctrl->minimum = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN;
@@ -791,6 +947,7 @@ static int rkmpp_dec_querymenu(struct rkmpp_dec_context *dec,
 		case V4L2_MPEG_VIDEO_H264_PROFILE_MAIN:
 		case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH:
 		case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_10:
+		case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_422:
 			break;
 		default:
 			LOGV(1, "unsupported H264 profile: %x\n",
