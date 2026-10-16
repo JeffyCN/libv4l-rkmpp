@@ -6,7 +6,7 @@
  *
  *    MPP_FMT_YUV420SP         -> NV12    (identity)
  *    MPP_FMT_YUV420SP_10BIT   -> NV12    (compact 10-bit -> NV12, take high 8 bits)
- *    MPP_FMT_YUV422SP         -> NV12    (NV16 -> NV12, 2:1 horiz + 2:1 vert)
+ *    MPP_FMT_YUV422SP         -> NV12    (NV16 -> NV12, 2:1 vertical chroma average)
  *    MPP_FMT_YUV422_YUYV      -> NV12    (YUYV -> NV12)
  *
  *  Slow on big frames (4K@30 takes ~25% of one A76) but correct. The
@@ -31,9 +31,9 @@
 #include "libv4l-rkmpp-convert.h"
 
 /* MPP's reported frame size is unreliable for some layouts (e.g. NV16
- * frames report 2.5 bytes/px while the decoder pool actually allocates
- * the full 3.0). lseek(SEEK_END) on a dmabuf returns the real
- * allocation size -- use that when it is larger. */
+ * frames report 2.5 bytes/px while only 2.0 are needed; the pool
+ * allocates the reported size). lseek(SEEK_END) on a dmabuf returns
+ * the real allocation size -- use that when it is larger. */
 static size_t dmabuf_real_size(int fd, size_t reported)
 {
 	off_t real = lseek(fd, 0, SEEK_END);
@@ -86,12 +86,13 @@ int rkmpp_dec_convert_cpu(struct rkmpp_context *ctx,
 	y_size = hor_stride * ver_stride;
 	uv_size = y_size / 2;
 	dst_size = y_size + uv_size;
-	/* NOTE for MPP_FMT_YUV422SP: rkvdec H.264 4:2:2 frames are NOT
-	 * standard NV16. The chroma plane holds CbCr pairs at FULL width
-	 * but HALF height (hor_stride pairs x ver_stride/2 rows), so the
-	 * frame spans 2.0 bytes/px (Y 1.0 + chroma 1.0), not NV16's 3.0.
-	 * Verified by dumping a frame and cross-checking against a
-	 * software-decoded reference.
+	/* NOTE for MPP_FMT_YUV422SP: rkvdec H.264 4:2:2 output is
+	 * standard NV16 spanning 2.0 bytes/px (Y 1.0 + chroma 1.0),
+	 * verified bit-exact against a software-decoded reference on
+	 * RK3588; RK3576 behaves the same. MPP over-allocates the pool
+	 * buffer (2.5 bytes/px reported), the
+	 * chroma plane itself is hor_stride x ver_stride right behind
+	 * the luma plane.
 	 *
 	 * NOTE for MPP_FMT_YUV420SP_10BIT: the compact 10-bit packing
 	 * (4 samples in 5 bytes) spans 1.5 bytes/px (Y 1.0 + chroma
@@ -105,10 +106,10 @@ int rkmpp_dec_convert_cpu(struct rkmpp_context *ctx,
 
 	/*
 	 * The size check must use the real allocation, not the reported
-	 * frame size: for NV16 MPP reports 2.5 bytes/px but the pool
-	 * allocates the full 3.0, and the chroma downsampler below reads
-	 * every chroma row up to ver_stride. If the real allocation is
-	 * genuinely too small, fail cleanly instead of faulting.
+	 * frame size: the reported size can exceed what the pool really
+	 * allocated, and the converters below read up to src_size bytes.
+	 * If the real allocation is genuinely too small, fail cleanly
+	 * instead of faulting.
 	 */
 	src_size_real = dmabuf_real_size(src->fd, src->size);
 	if (src_size_real < src_size || dst->size < dst_size) {
@@ -204,11 +205,12 @@ int rkmpp_dec_convert_cpu(struct rkmpp_context *ctx,
 	}
 
 	case MPP_FMT_YUV422SP: {
-		/* rkvdec H.264 "4:2:2": chroma pairs sit at FULL width
-		 * but HALF height (hor_stride pairs x ver_stride/2 rows).
-		 * Downsample into NV12: dst pair dx averages the src
-		 * pairs of luma cols 2dx and 2dx+1 (bytes 4dx..4dx+3
-		 * of chroma row y). */
+		/* rkvdec H.264 4:2:2 output is standard NV16: chroma
+		 * rows of hor_stride bytes, ver_stride rows, one row
+		 * per luma row. Verified bit-exact against a software
+		 * decode on RK3588 (same layout reported on RK3576).
+		 * Downsample to NV12: copy luma, average each vertical
+		 * pair of chroma rows. */
 		const uint8_t *sy = (const uint8_t *)src_y;
 		const uint8_t *sch = (const uint8_t *)src_y + y_size;
 		uint8_t *dy = (uint8_t *)dst_y;
@@ -221,17 +223,13 @@ int rkmpp_dec_convert_cpu(struct rkmpp_context *ctx,
 			       hor_stride);
 		}
 		for (y = 0; y < height / 2; y++) {
-			const uint8_t *r0 = sch + y * hor_stride * 2;
-			uint32_t dx;
+			const uint8_t *r0 = sch + (2 * y) * hor_stride;
+			const uint8_t *r1 = r0 + hor_stride;
+			uint8_t *d = duv + y * hor_stride;
 
-			for (dx = 0; dx < width / 2; dx++) {
-				uint32_t p0 = 4 * dx, p1 = 4 * dx + 2;
-				uint32_t cb = ((uint32_t)r0[p0] + r0[p1] + 1) / 2;
-				uint32_t cr = ((uint32_t)r0[p0 + 1] +
-					       r0[p1 + 1] + 1) / 2;
-				duv[y * hor_stride + 2 * dx]     = (uint8_t)cb;
-				duv[y * hor_stride + 2 * dx + 1] = (uint8_t)cr;
-			}
+			for (x = 0; x < hor_stride; x++)
+				d[x] = (uint8_t)(((uint32_t)r0[x] +
+						  r1[x] + 1) / 2);
 		}
 		ret = 0;
 		break;
