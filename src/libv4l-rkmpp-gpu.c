@@ -72,14 +72,14 @@ static const char *vs_src =
  * is a passthrough. Plain R16 plane imports of this buffer fail
  * (EGL_BAD_MATCH), and reading it as P010 would be wrong anyway.
  *
- * NOTE on rkvdec H.264 4:2:2 (MPP_FMT_YUV422SP): despite the format
- * name, the buffer layout is NOT standard NV16. Empirically (buffer
- * dump cross-checked against a software-decoded reference frame):
+ * NOTE on rkvdec H.264 4:2:2 (MPP_FMT_YUV422SP): the buffer layout is
+ * standard NV16, verified bit-exact against a software-decoded
+ * reference frame on RK3588 (RK3576 reported the same, GitHub issue
+ * #35):
  *   Y    @ 0,                hor_stride x ver_stride, 1 B/sample
- *   CbCr @ hor_stride*ver_stride, pairs at FULL width, HALF height
- *        (1920 pairs x 544 rows for 1080p), 2 B/pair, i.e. the chroma
- *        is 4:2:2 horizontally but 4:2:0 vertically.
- * MPP reports the frame size accordingly (2.5 B/px, not NV16's 3.0). */
+ *   CbCr @ hor_stride*ver_stride, hor_stride bytes per row,
+ *        ver_stride rows (one chroma row per luma row)
+ * MPP over-allocates the pool buffer (2.5 B/px reported, 2.0 needed). */
 
 /*
  * Direct plane render shaders.
@@ -106,28 +106,39 @@ static const char *fs_plane_y8 =
 	"   gl_FragColor = vec4(v, v, v, 1.0);\n"
 	"}\n";
 
-/* 8-bit UV (rkvdec 4:2:2 chroma): dst ABGR8888 texel (tx,ty) holds
- * the two NV12 pairs for luma cols 4tx..4tx+3, taken from the 4:2:2
- * chroma pairs of luma col 4tx and 4tx+2 (bytes 8tx..8tx+1 and
- * 8tx+4..8tx+5 of the full-width chroma row): vec4(Cb(4tx), Cr(4tx),
- * Cb(4tx+2), Cr(4tx+2)). NEAREST texel addressing for a bit-exact
- * copy. */
+/* 8-bit UV (rkvdec 4:2:2 chroma, standard NV16): dst ABGR8888 texel
+ * (tx,ty) holds the two NV12 pairs for luma cols 4tx..4tx+3 and luma
+ * rows 2ty..2ty+1: the vertical average of the NV16 CbCr pairs at
+ * bytes 4tx..4tx+3 of chroma rows 2ty and 2ty+1. Each channel samples
+ * the same byte in both rows and averages: vec4(Cb(4tx), Cr(4tx),
+ * Cb(4tx+2), Cr(4tx+2)). Sampling uses texel centers, so the mapping
+ * is exact up to the +/-1 rounding of the average.
+ *
+ * Byte-order note (measured on RK3588, Mali BIF/G52 DDK): a vec4 store
+ * to the ABGR8888 attachment lands in the plane as [.a, .r, .g, .b],
+ * so the components are emitted rotated once (g, b, a, r) to make the
+ * plane bytes read Cb, Cr, Cb, Cr as NV12 needs. */
 static const char *fs_plane_uv8 =
 	"precision highp float;\n"
 	"uniform sampler2D tex_c;\n"
 	"uniform vec2 c_step;\n"
 	"void main() {\n"
-	"   float bx = floor(gl_FragCoord.x) * 8.0;\n"
-	"   float by = floor(gl_FragCoord.y) + 0.5;\n"
-	"   float b0 = texture2D(tex_c, vec2((bx + 0.5) * c_step.x,\n"
-	"       (by) * c_step.y)).r;\n"
-	"   float b1 = texture2D(tex_c, vec2((bx + 1.5) * c_step.x,\n"
-	"       (by) * c_step.y)).r;\n"
-	"   float b2 = texture2D(tex_c, vec2((bx + 4.5) * c_step.x,\n"
-	"       (by) * c_step.y)).r;\n"
-	"   float b3 = texture2D(tex_c, vec2((bx + 5.5) * c_step.x,\n"
-	"       (by) * c_step.y)).r;\n"
-	"   gl_FragColor = vec4(b0, b1, b2, b3);\n"
+	"   float bx = floor(gl_FragCoord.x) * 4.0;\n"
+	"   float y0 = floor(gl_FragCoord.y) * 2.0 + 0.5;\n"
+	"   float y1 = y0 + 1.0;\n"
+	"   float b0 = 0.5 * (texture2D(tex_c, vec2((bx + 0.5) * c_step.x,\n"
+	"       y0 * c_step.y)).r + texture2D(tex_c, vec2((bx + 0.5) * c_step.x,\n"
+	"       y1 * c_step.y)).r);\n"
+	"   float b1 = 0.5 * (texture2D(tex_c, vec2((bx + 1.5) * c_step.x,\n"
+	"       y0 * c_step.y)).r + texture2D(tex_c, vec2((bx + 1.5) * c_step.x,\n"
+	"       y1 * c_step.y)).r);\n"
+	"   float b2 = 0.5 * (texture2D(tex_c, vec2((bx + 2.5) * c_step.x,\n"
+	"       y0 * c_step.y)).r + texture2D(tex_c, vec2((bx + 2.5) * c_step.x,\n"
+	"       y1 * c_step.y)).r);\n"
+	"   float b3 = 0.5 * (texture2D(tex_c, vec2((bx + 3.5) * c_step.x,\n"
+	"       y0 * c_step.y)).r + texture2D(tex_c, vec2((bx + 3.5) * c_step.x,\n"
+	"       y1 * c_step.y)).r);\n"
+	"   gl_FragColor = vec4(b1, b2, b3, b0);\n"
 	"}\n";
 
 /*
@@ -421,9 +432,10 @@ static bool gpu_convert_planes(int dst_fd, uint32_t width, uint32_t height,
 	glBindFramebuffer(GL_FRAMEBUFFER, pass[1].fbo);
 	glViewport(0, 0, pass[1].dst_vw, pass[1].dst_vh);
 	glUseProgram(pass[1].program);
-	/* c_step: the 422 chroma byte grid is 2*hor_stride bytes wide. */
+	/* c_step: the NV16 chroma plane is hor_stride bytes wide and
+	 * ver_stride rows tall (one chroma row per luma row). */
 	glUniform2f(glGetUniformLocation(pass[1].program, "c_step"),
-		    1.0f / (2.0f * hor_stride), 2.0f / ver_stride);
+		    1.0f / hor_stride, 1.0f / ver_stride);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, gctx.src_tex[1]);
 	{
@@ -547,14 +559,16 @@ static bool bind_yuv_to_tex(int src_fd, uint32_t hor_stride,
 		pp[1] = hor_stride;     off[1] = hor_stride * ver_stride;
 		break;
 	case MPP_FMT_YUV422SP:
-		/* rkvdec H.264 4:2:2: chroma pairs at FULL width but
-		 * HALF height; row = hor_stride pairs = 2*hs bytes. */
+		/* rkvdec H.264 4:2:2 output is standard NV16: chroma
+		 * rows of hor_stride bytes, ver_stride rows (verified
+		 * bit-exact against a software decode on RK3588). One
+		 * chroma texel == one CbCr byte. */
 		fcc[0] = 0x20203852; /* DRM_FORMAT_R8 */
 		pw[0] = hor_stride;     ph[0] = ver_stride;
 		pp[0] = hor_stride;     off[0] = 0;
 		fcc[1] = 0x20203852; /* DRM_FORMAT_R8 */
-		pw[1] = hor_stride * 2; ph[1] = ver_stride / 2;
-		pp[1] = hor_stride * 2; off[1] = hor_stride * ver_stride;
+		pw[1] = hor_stride;     ph[1] = ver_stride;
+		pp[1] = hor_stride;     off[1] = hor_stride * ver_stride;
 		break;
 	default:
 		LOGE("gpu: unsupported src fmt %d\n", fmt);
@@ -614,9 +628,18 @@ static void argb_to_nv12(const uint8_t *argb, uint32_t w, uint32_t h,
 			int uu  = ((-38 * r -  74 * g + 112 * b + 128) >> 8) + 128;
 			int vv  = ((112 * r -  94 * g -  18 * b + 128) >> 8) + 128;
 			dy[y * w + x] = (uint8_t)(yy < 0 ? 0 : yy > 255 ? 255 : yy);
-			if ((y & 1) == 0 && (x & 1) == 0) {
-				duv[(y / 2) * w + x]     = (uint8_t)(uu < 0 ? 0 : uu > 255 ? 255 : uu);
-				duv[(y / 2) * w + x + 1] = (uint8_t)(vv < 0 ? 0 : vv > 255 ? 255 : vv);
+			if ((y & 1) == 1 && (x & 1) == 0) {
+				/* dst chroma row y / 2: average rgb
+				 * rows y - 1 and y, per column. */
+				const uint8_t *q = p - src_stride;
+				int rq = q[0], gq = q[1], bq = q[2];
+				int uu2 = ((-38 * rq - 74 * gq + 112 * bq + 128) >> 8) + 128;
+				int vv2 = ((112 * rq - 94 * gq - 18 * bq + 128) >> 8) + 128;
+				int cu = (uu2 + uu + 1) / 2;
+				int cv = (vv2 + vv + 1) / 2;
+
+				duv[(y / 2) * w + x]     = (uint8_t)(cu < 0 ? 0 : cu > 255 ? 255 : cu);
+				duv[(y / 2) * w + x + 1] = (uint8_t)(cv < 0 ? 0 : cv > 255 ? 255 : cv);
 			}
 		}
 	}
