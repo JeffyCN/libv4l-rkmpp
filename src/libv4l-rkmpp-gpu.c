@@ -645,13 +645,13 @@ static void argb_to_nv12(const uint8_t *argb, uint32_t w, uint32_t h,
 	}
 }
 
-int rkmpp_dec_convert_gpu(struct rkmpp_context *ctx,
-			  struct rkmpp_buffer *src,
-			  struct rkmpp_buffer *dst,
-			  MppFrameFormat src_fmt,
-			  MppFrameFormat dst_fmt,
-			  uint32_t width, uint32_t height,
-			  uint32_t hor_stride, uint32_t ver_stride)
+static int gpu_convert(struct rkmpp_context *ctx,
+		       struct rkmpp_buffer *src,
+		       struct rkmpp_buffer *dst,
+		       MppFrameFormat src_fmt,
+		       MppFrameFormat dst_fmt,
+		       uint32_t width, uint32_t height,
+		       uint32_t hor_stride, uint32_t ver_stride)
 {
 	bool use_c10;
 	uint8_t *rgba = NULL;
@@ -798,6 +798,28 @@ out_latch_fmt:
 	 * every frame; the caller falls back to the CPU tier. */
 	gctx.unavailable_fmt = src_fmt;
 	return -ENOTSUP;
+}
+
+/* gctx is one EGL context for the whole process, and each decoder
+ * converts on its own thread: a context can only be current on one
+ * thread at a time. */
+static pthread_mutex_t gpu_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int rkmpp_dec_convert_gpu(struct rkmpp_context *ctx,
+			  struct rkmpp_buffer *src,
+			  struct rkmpp_buffer *dst,
+			  MppFrameFormat src_fmt,
+			  MppFrameFormat dst_fmt,
+			  uint32_t width, uint32_t height,
+			  uint32_t hor_stride, uint32_t ver_stride)
+{
+	int ret;
+
+	pthread_mutex_lock(&gpu_lock);
+	ret = gpu_convert(ctx, src, dst, src_fmt, dst_fmt,
+			  width, height, hor_stride, ver_stride);
+	pthread_mutex_unlock(&gpu_lock);
+	return ret;
 }
 
 #else /* !HAVE_GPU */
