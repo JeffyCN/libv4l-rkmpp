@@ -218,6 +218,8 @@ TAILQ_HEAD(rkmpp_buf_head, rkmpp_buffer);
  * @queue_mutex:	Mutex for buffer lists.
  * @rkmpp_format:	Mpp format.
  * @format:		V4L2 multi-plane format.
+ * @generation:		Bumped whenever the queue is reset or its buffers are
+ *			released.
  */
 struct rkmpp_buf_queue {
 	enum v4l2_memory memory;
@@ -236,6 +238,8 @@ struct rkmpp_buf_queue {
 
 	const struct rkmpp_fmt *rkmpp_format;
 	struct v4l2_pix_format_mplane format;
+
+	unsigned int generation;
 };
 
 /**
