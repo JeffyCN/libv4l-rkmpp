@@ -87,6 +87,8 @@ static void rkmpp_destroy_buffers(struct rkmpp_buf_queue *queue)
 {
 	unsigned int i;
 
+	queue->generation++;
+
 	if (!queue->num_buffers)
 		return;
 
@@ -115,6 +117,8 @@ void rkmpp_reset_queue(struct rkmpp_context *ctx,
 	unsigned int i;
 
 	ENTER();
+
+	queue->generation++;
 
 	/* Hand over all buffers to userspace */
 	pthread_mutex_lock(&queue->queue_mutex);

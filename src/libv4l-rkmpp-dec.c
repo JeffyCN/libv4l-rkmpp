@@ -430,10 +430,12 @@ static void *decoder_thread_fn(void *data)
 				bool got = false;
 				int waits;
 				struct timespec ts;
+				unsigned int gen = ctx->capture.generation;
 
 				for (waits = 0;
 				     waits < RKMPP_DEC_CVT_BUF_WAITS &&
-				     ctx->mpp_streaming; waits++) {
+				     ctx->mpp_streaming &&
+				     ctx->capture.generation == gen; waits++) {
 					if (mpp_buffer_get(
 						    ctx->capture.external_group,
 						    &tmp_buf,
@@ -469,10 +471,23 @@ static void *decoder_thread_fn(void *data)
 					pthread_mutex_lock(&ctx->ioctl_mutex);
 				}
 
+				/*
+				 * A reset while ioctl_mutex was released handed
+				 * the raw buffer, with this thread's reference,
+				 * to the client; a REQBUFS also released it.
+				 * Either way it is no longer ours to put.
+				 */
+				if (ctx->capture.generation != gen) {
+					LOGV(2, "capture queue reset, drop frame(%lld)\n",
+					     mpp_frame_get_pts(frame));
+					goto next_locked;
+				}
+
 				if (!got) {
 					LOGV(2, "no free capture buf, drop frame(%lld)\n",
 					     mpp_frame_get_pts(frame));
 					mpp_buffer_put(buffer);
+					rkmpp_buffer_clr_locked(rkmpp_buffer);
 					goto next_locked;
 				}
 
@@ -482,6 +497,7 @@ static void *decoder_thread_fn(void *data)
 					LOGE("invalid convert buffer index\n");
 					mpp_buffer_put(tmp_buf);
 					mpp_buffer_put(buffer);
+					rkmpp_buffer_clr_locked(rkmpp_buffer);
 					goto next_locked;
 				}
 
@@ -497,6 +513,7 @@ static void *decoder_thread_fn(void *data)
 					    dec->video_info.ver_stride)) {
 					mpp_buffer_put(tmp_buf);
 					mpp_buffer_put(buffer);
+					rkmpp_buffer_clr_locked(rkmpp_buffer);
 					goto next_locked;
 				}
 
