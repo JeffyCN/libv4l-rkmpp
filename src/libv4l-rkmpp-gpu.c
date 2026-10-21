@@ -95,13 +95,20 @@ static const char *vs_src =
  * import with hints); the dst planes need the BT.601 limited-range
  * inverse (RGB -> Y and RGB -> Cb/Cr pairs). */
 
+/* Both plane shaders address dst pixels by index. GLSL ES 1.00 declares
+ * gl_FragCoord mediump, and Mesa on Mali evaluates it in fp16, which
+ * cannot hold pixel centres from 1024.5 on, so the index comes from the
+ * highp texcoord varying; u_vp is the viewport size in pixels. */
+
 /* 8-bit Y: bit-exact texel copy at 1:1 */
 static const char *fs_plane_y8 =
 	"precision highp float;\n"
+	"varying vec2 texcoord;\n"
 	"uniform sampler2D tex_y;\n"
 	"uniform vec2 t_step;\n"
+	"uniform vec2 u_vp;\n"
 	"void main() {\n"
-	"   vec2 t = (floor(gl_FragCoord.xy) + 0.5) * t_step;\n"
+	"   vec2 t = (floor(texcoord * u_vp) + 0.5) * t_step;\n"
 	"   float v = texture2D(tex_y, t).r;\n"
 	"   gl_FragColor = vec4(v, v, v, 1.0);\n"
 	"}\n";
@@ -120,11 +127,14 @@ static const char *fs_plane_y8 =
  * plane bytes read Cb, Cr, Cb, Cr as NV12 needs. */
 static const char *fs_plane_uv8 =
 	"precision highp float;\n"
+	"varying vec2 texcoord;\n"
 	"uniform sampler2D tex_c;\n"
 	"uniform vec2 c_step;\n"
+	"uniform vec2 u_vp;\n"
 	"void main() {\n"
-	"   float bx = floor(gl_FragCoord.x) * 4.0;\n"
-	"   float y0 = floor(gl_FragCoord.y) * 2.0 + 0.5;\n"
+	"   vec2 px = floor(texcoord * u_vp);\n"
+	"   float bx = px.x * 4.0;\n"
+	"   float y0 = px.y * 2.0 + 0.5;\n"
 	"   float y1 = y0 + 1.0;\n"
 	"   float b0 = 0.5 * (texture2D(tex_c, vec2((bx + 0.5) * c_step.x,\n"
 	"       y0 * c_step.y)).r + texture2D(tex_c, vec2((bx + 0.5) * c_step.x,\n"
@@ -415,6 +425,8 @@ static bool gpu_convert_planes(int dst_fd, uint32_t width, uint32_t height,
 	glBindFramebuffer(GL_FRAMEBUFFER, pass[0].fbo);
 	glViewport(0, 0, pass[0].dst_vw, pass[0].dst_vh);
 	glUseProgram(pass[0].program);
+	glUniform2f(glGetUniformLocation(pass[0].program, "u_vp"),
+		    pass[0].dst_vw, pass[0].dst_vh);
 	glUniform2f(glGetUniformLocation(pass[0].program, "t_step"),
 		    1.0f / hor_stride, 1.0f / ver_stride);
 	glActiveTexture(GL_TEXTURE0);
@@ -432,6 +444,8 @@ static bool gpu_convert_planes(int dst_fd, uint32_t width, uint32_t height,
 	glBindFramebuffer(GL_FRAMEBUFFER, pass[1].fbo);
 	glViewport(0, 0, pass[1].dst_vw, pass[1].dst_vh);
 	glUseProgram(pass[1].program);
+	glUniform2f(glGetUniformLocation(pass[1].program, "u_vp"),
+		    pass[1].dst_vw, pass[1].dst_vh);
 	/* c_step: the NV16 chroma plane is hor_stride bytes wide and
 	 * ver_stride rows tall (one chroma row per luma row). */
 	glUniform2f(glGetUniformLocation(pass[1].program, "c_step"),
