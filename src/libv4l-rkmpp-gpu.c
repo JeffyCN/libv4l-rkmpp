@@ -138,7 +138,7 @@ static const char *fs_plane_uv8 =
 	"   float b3 = 0.5 * (texture2D(tex_c, vec2((bx + 3.5) * c_step.x,\n"
 	"       y0 * c_step.y)).r + texture2D(tex_c, vec2((bx + 3.5) * c_step.x,\n"
 	"       y1 * c_step.y)).r);\n"
-	"   gl_FragColor = vec4(b1, b2, b3, b0);\n"
+	"   gl_FragColor = vec4(b0, b1, b2, b3);\n"
 	"}\n";
 
 /*
@@ -358,7 +358,7 @@ static bool gpu_convert_planes(int dst_fd, uint32_t width, uint32_t height,
 		{ 0, 0, 0x20203852 /* DRM_FORMAT_R8 */,
 		  hor_stride, ver_stride, hor_stride, 0,
 		  gctx.program_plane_y8, hor_stride, ver_stride },
-		{ 0, 0, 0x34324142 /* AB24 */,
+		{ 0, 0, 0x34324241 /* DRM_FORMAT_ABGR8888 */,
 		  hor_stride / 4, ver_stride / 2, hor_stride, hor_stride * ver_stride,
 		  gctx.program_plane_uv8, hor_stride / 4, ver_stride / 2 },
 	};
