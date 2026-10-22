@@ -343,7 +343,8 @@ static void *decoder_thread_fn(void *data)
 	while (1) {
 		pthread_mutex_lock(&ctx->worker_mutex);
 
-		while (!ctx->mpp_streaming)
+		while (!__atomic_load_n(&ctx->mpp_streaming,
+					__ATOMIC_ACQUIRE))
 			pthread_cond_wait(&ctx->worker_cond,
 					  &ctx->worker_mutex);
 

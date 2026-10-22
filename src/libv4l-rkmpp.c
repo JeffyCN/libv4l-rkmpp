@@ -783,14 +783,26 @@ void rkmpp_streamoff(struct rkmpp_context *ctx)
 
 	ENTER();
 
-	LOGV(1, "mpp stop streaming\n");
-
-	pthread_mutex_lock(&ctx->worker_mutex);
-	ctx->mpp_streaming = false;
-
+	/* Wake decode_get_frame/encode_get_packet first: the worker may
+	 * hold worker_mutex inside an unbounded internal MPP wait that
+	 * reset alone does not always wake, so the flag must be cleared
+	 * and MPP reset before taking the lock. */
+	__atomic_store_n(&ctx->mpp_streaming, false, __ATOMIC_RELEASE);
 	ctx->mpi->reset(ctx->mpp);
-	mpp_destroy(ctx->mpp);
-	pthread_mutex_unlock(&ctx->worker_mutex);
+
+	/* Bounded wait: if the worker stays stuck inside MPP, take the
+	 * -ETIMEDOUT exit and let the caller leak the MPP instance
+	 * instead of deadlocking.  Only safe at teardown. */
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_sec += 2;
+	int ret = pthread_mutex_timedlock(&ctx->worker_mutex, &ts);
+	if (ret == 0) {
+		mpp_destroy(ctx->mpp);
+		pthread_mutex_unlock(&ctx->worker_mutex);
+	} else {
+		LOGE("worker stuck (%d), leaking mpp on teardown\n", ret);
+	}
 
 	LEAVE();
 }
@@ -1087,6 +1099,12 @@ static void plugin_close(void *dev_ops_priv)
 	LOGV(1, "ctx(%p): closing plugin\n", (void *)ctx);
 
 	if (ctx->worker_thread) {
+		/* Stop MPP the way STREAMOFF does before cancelling the
+		 * worker: the worker may be blocked in decode_get_frame
+		 * holding MPP's mutex, and a cancelled thread re-acquires
+		 * that mutex before unwinding -- resetting MPP afterwards
+		 * would deadlock on a mutex owned by a dead thread. */
+		rkmpp_streamoff(ctx);
 		pthread_cancel(ctx->worker_thread);
 		pthread_join(ctx->worker_thread, NULL);
 	}
@@ -1095,11 +1113,6 @@ static void plugin_close(void *dev_ops_priv)
 		rkmpp_dec_deinit(ctx->data);
 	else
 		rkmpp_enc_deinit(ctx->data);
-
-	if (ctx->mpp_streaming) {
-		ctx->mpi->reset(ctx->mpp);
-		mpp_destroy(ctx->mpp);
-	}
 
 	rkmpp_destroy_buffers(&ctx->output);
 
