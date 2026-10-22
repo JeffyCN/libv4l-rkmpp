@@ -249,27 +249,24 @@ int rkmpp_dec_convert_cpu(struct rkmpp_context *ctx,
 						s[y * hor_stride * 2 + 2 * x];
 			}
 		}
-		for (y = 0; y + 1 < ver_stride; y += 2) {
-			for (x = 0; x + 1 < hor_stride; x += 2) {
-				/* Cb is at +1, Cr is at +3 of each 4-byte pair */
-				uint32_t cb00 = (y + 0) * hor_stride * 2 + 2 * x + 1;
-				uint32_t cb01 = (y + 0) * hor_stride * 2 + 2 * (x + 1) + 1;
-				uint32_t cb10 = (y + 1) * hor_stride * 2 + 2 * x + 1;
-				uint32_t cb11 = (y + 1) * hor_stride * 2 + 2 * (x + 1) + 1;
-				uint32_t cr00 = cb00 + 2;
-				uint32_t cr01 = cb01 + 2;
-				uint32_t cr10 = cb10 + 2;
-				uint32_t cr11 = cb11 + 2;
-				uint32_t cb = ((uint32_t)s[cb00] +
-					       (uint32_t)s[cb01] +
-					       (uint32_t)s[cb10] +
-					       (uint32_t)s[cb11] + 2) / 4;
-				uint32_t cr = ((uint32_t)s[cr00] +
-					       (uint32_t)s[cr01] +
-					       (uint32_t)s[cr10] +
-					       (uint32_t)s[cr11] + 2) / 4;
-				duv[(y / 2) * hor_stride + x]     = (uint8_t)cb;
-				duv[(y / 2) * hor_stride + x + 1] = (uint8_t)cr;
+		for (y = 0; y < height / 2; y++) {
+			/* Cb sits at +1 and Cr at +3 of each 4-byte
+			 * pair, so step the row pointers by 4 bytes
+			 * per pair. Chroma is already at half the
+			 * horizontal resolution, so only the vertical
+			 * pair of rows is averaged; averaging columns
+			 * too would mix the Cb and Cr of neighboring
+			 * pairs. */
+			const uint8_t *r0 = s + (2 * y) * hor_stride * 2 + 1;
+			const uint8_t *r1 = r0 + hor_stride * 2;
+			uint8_t *d = duv + y * hor_stride;
+
+			for (x = 0; x < hor_stride / 2; x++) {
+				d[2 * x] = (uint8_t)(((uint32_t)r0[4 * x] +
+						      r1[4 * x] + 1) / 2);
+				d[2 * x + 1] =
+					(uint8_t)(((uint32_t)r0[4 * x + 2] +
+						   r1[4 * x + 2] + 1) / 2);
 			}
 		}
 		ret = 0;
