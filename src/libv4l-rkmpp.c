@@ -12,6 +12,9 @@
  *  GNU General Public License for more details.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <fcntl.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
@@ -1107,10 +1110,21 @@ static void plugin_close(void *dev_ops_priv)
 		 * worker: the worker may be blocked in decode_get_frame
 		 * holding MPP's mutex, and a cancelled thread re-acquires
 		 * that mutex before unwinding -- resetting MPP afterwards
-		 * would deadlock on a mutex owned by a dead thread. */
+		 * would deadlock on a mutex owned by a dead thread.
+		 *
+		 * Even then the worker can stay stuck inside an MPP wait
+		 * that neither reset nor cancellation wakes (the drain-
+		 * state get_frame wait ignores its timeout).  close() must
+		 * never hang, so give the join a bounded window and, on
+		 * timeout, detach and abandon the worker -- the leaked
+		 * thread and MPP instance are reclaimed at process exit. */
 		rkmpp_streamoff(ctx);
 		pthread_cancel(ctx->worker_thread);
-		pthread_join(ctx->worker_thread, NULL);
+		struct timespec ts;
+		clock_gettime(CLOCK_REALTIME, &ts);
+		ts.tv_sec += 1;
+		if (pthread_timedjoin_np(ctx->worker_thread, NULL, &ts))
+			pthread_detach(ctx->worker_thread);
 	}
 
 	if (ctx->is_decoder)
