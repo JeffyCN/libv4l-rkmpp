@@ -319,7 +319,7 @@ static void rkmpp_feed_mpp(struct rkmpp_dec_context *dec)
 {
 	struct rkmpp_context *ctx = dec->ctx;
 
-	if (!ctx->mpp_streaming)
+	if (!rkmpp_is_streaming(ctx))
 		return;
 
 	rkmpp_put_packets(dec);
@@ -343,8 +343,7 @@ static void *decoder_thread_fn(void *data)
 	while (1) {
 		pthread_mutex_lock(&ctx->worker_mutex);
 
-		while (!__atomic_load_n(&ctx->mpp_streaming,
-					__ATOMIC_ACQUIRE))
+		while (!rkmpp_is_streaming(ctx))
 			pthread_cond_wait(&ctx->worker_cond,
 					  &ctx->worker_mutex);
 
@@ -354,7 +353,10 @@ static void *decoder_thread_fn(void *data)
 		ret = ctx->mpi->decode_get_frame(ctx->mpp, &frame);
 
 		if (ret != MPP_OK || !frame) {
-			if (ret != MPP_ERR_TIMEOUT)
+			/* The shutdown path clears mpp_streaming before
+			 * resetting MPP, so a failure right after the
+			 * reset is the expected wake-up, not an error. */
+			if (ret != MPP_ERR_TIMEOUT && rkmpp_is_streaming(ctx))
 				LOGE("failed to get frame\n");
 
 			pthread_mutex_unlock(&ctx->worker_mutex);
@@ -367,7 +369,7 @@ static void *decoder_thread_fn(void *data)
 
 		pthread_mutex_lock(&ctx->ioctl_mutex);
 
-		if (!ctx->mpp_streaming || !ctx->mpp_produced)
+		if (!rkmpp_is_streaming(ctx) || !ctx->mpp_produced)
 			goto next_locked;
 
 		/* Handle info change frame */
@@ -434,7 +436,7 @@ static void *decoder_thread_fn(void *data)
 
 				for (waits = 0;
 				     waits < RKMPP_DEC_CVT_BUF_WAITS &&
-				     ctx->mpp_streaming &&
+				     rkmpp_is_streaming(ctx) &&
 				     ctx->capture.generation == gen; waits++) {
 					if (mpp_buffer_get(
 						    ctx->capture.external_group,
@@ -660,7 +662,7 @@ static int rkmpp_dec_dqevent(struct rkmpp_dec_context *dec,
 	LOGV(1, "dequeue resolution change event\n");
 
 	/* The chromium's stateful decoder needs a last buffer for flushing */
-	if (ctx->mpp_streaming)
+	if (rkmpp_is_streaming(ctx))
 		rkmpp_try_send_eos(dec);
 
 	LEAVE();
@@ -689,7 +691,7 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 	LOGV(1, "queue(%d) start streaming\n", *type);
 
 	/* Commit pending info change to mpp */
-	if (ctx->mpp_streaming && dec->video_info.dirty &&
+	if (rkmpp_is_streaming(ctx) && dec->video_info.dirty &&
 	    *type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		LOGV(1, "send info change ready\n");
 
@@ -698,7 +700,7 @@ static int rkmpp_dec_streamon(struct rkmpp_dec_context *dec,
 		dec->video_info.dirty = false;
 	}
 
-	if (ctx->mpp_streaming)
+	if (rkmpp_is_streaming(ctx))
 		goto out;
 
 	LOGV(1, "mpp initializing for %s\n", ctx->output.rkmpp_format->name);
@@ -806,7 +808,7 @@ static int rkmpp_dec_streamoff(struct rkmpp_dec_context *dec,
 		dec->pending_eos = false;
 
 	/* Stop mpp streaming only when all queues stopped */
-	if (ctx->mpp_streaming &&
+	if (rkmpp_is_streaming(ctx) &&
 	    !ctx->output.streaming && !ctx->capture.streaming)
 		rkmpp_streamoff(ctx);
 out:

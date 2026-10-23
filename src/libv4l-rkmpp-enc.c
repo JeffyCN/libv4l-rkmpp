@@ -288,7 +288,7 @@ static void *encoder_thread_fn(void *data)
 	while (1) {
 		pthread_mutex_lock(&ctx->worker_mutex);
 
-		while (!ctx->mpp_streaming)
+		while (!rkmpp_is_streaming(ctx))
 			pthread_cond_wait(&ctx->worker_cond,
 					  &ctx->worker_mutex);
 
@@ -335,7 +335,7 @@ static void *encoder_thread_fn(void *data)
 
 		pthread_mutex_lock(&ctx->ioctl_mutex);
 
-		if (!ctx->mpp_streaming || !ctx->mpp_produced)
+		if (!rkmpp_is_streaming(ctx) || !ctx->mpp_produced)
 			goto next_locked;
 
 		pthread_mutex_lock(&ctx->capture.queue_mutex);
@@ -708,7 +708,7 @@ static int rkmpp_enc_streamon(struct rkmpp_enc_context *enc,
 	LOGV(1, "queue(%d) start streaming\n", *type);
 
 	/* Start mpp streaming only when all queues started */
-	if (ctx->mpp_streaming ||
+	if (rkmpp_is_streaming(ctx) ||
 	    !ctx->output.streaming || !ctx->capture.streaming)
 		goto out;
 
@@ -881,7 +881,7 @@ static int rkmpp_enc_s_parm(struct rkmpp_enc_context *enc,
 	     parms->parm.output.timeperframe.numerator,
 	     parms->parm.output.timeperframe.denominator);
 
-	if (ctx->mpp_streaming &&
+	if (rkmpp_is_streaming(ctx) &&
 	    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 		LOGE("failed to apply framerate\n");
 		RETURN_ERR(errno, -1);
@@ -1027,7 +1027,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 			LOGV(1, "header mode: %d\n", ctrl->value);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply header mode\n");
 				RETURN_ERR(errno, -1);
@@ -1038,7 +1038,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			LOGV(1, "request keyframes: %d\n",
 			     enc->keyframe_requested);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to request keyframe\n");
 				RETURN_ERR(errno, -1);
@@ -1060,7 +1060,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 			LOGV(1, "bitrate mode: %d\n", ctrl->value);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply bitrate mode\n");
 				RETURN_ERR(errno, -1);
@@ -1070,7 +1070,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->bitrate = ctrl->value;
 			LOGV(1, "bitrate: %d\n", enc->bitrate);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply bitrate\n");
 				RETURN_ERR(errno, -1);
@@ -1092,7 +1092,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->max_qp = ctrl->value;
 			LOGV(1, "h264 max qp: %d\n", enc->max_qp);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
 				LOGE("failed to apply h264 max qp\n");
 				RETURN_ERR(errno, -1);
@@ -1102,7 +1102,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->min_qp = ctrl->value;
 			LOGV(1, "h264 min qp: %d\n", enc->min_qp);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
 				LOGE("failed to apply h264 min qp\n");
 				RETURN_ERR(errno, -1);
@@ -1119,7 +1119,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 
 			LOGV(1, "h264 profile: %d\n", enc->h264.profile);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
 				LOGE("failed to apply h264 profile\n");
 				RETURN_ERR(errno, -1);
@@ -1129,7 +1129,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->h264.level = ctrl->value;
 			LOGV(1, "h264 level: %d\n", enc->h264.level);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_h264_cfg(enc) < 0) {
 				LOGE("failed to apply h264 level\n");
 				RETURN_ERR(errno, -1);
@@ -1147,7 +1147,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->max_qp = ctrl->value;
 			LOGV(1, "vpx max qp: %d\n", enc->max_qp);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_vp8_cfg(enc) < 0) {
 				LOGE("failed to apply vpx max qp\n");
 				RETURN_ERR(errno, -1);
@@ -1157,7 +1157,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->min_qp = ctrl->value;
 			LOGV(1, "vpx min qp: %d\n", enc->min_qp);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_vp8_cfg(enc) < 0) {
 				LOGE("failed to apply vpx min qp\n");
 				RETURN_ERR(errno, -1);
@@ -1167,7 +1167,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->mb_rc = !!ctrl->value;
 			LOGV(1, "mb rc: %d\n", enc->mb_rc);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply mb bitrate control\n");
 				RETURN_ERR(errno, -1);
@@ -1177,7 +1177,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->gop_size = ctrl->value;
 			LOGV(1, "gop size: %d\n", enc->gop_size);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply gop size\n");
 				RETURN_ERR(errno, -1);
@@ -1188,7 +1188,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			LOGV(1, "rc reaction coeff: %d\n",
 			     enc->rc_reaction_coeff);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply rc reaction coeff\n");
 				RETURN_ERR(errno, -1);
@@ -1198,7 +1198,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->fixed_bitrate = !!ctrl->value;
 			LOGV(1, "fixed bitrate: %d\n", enc->fixed_bitrate);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_rc_cfg(enc) < 0) {
 				LOGE("failed to apply fixed bitrate\n");
 				RETURN_ERR(errno, -1);
@@ -1208,7 +1208,7 @@ static int rkmpp_enc_s_ext_ctrls(struct rkmpp_enc_context *enc,
 			enc->mjpeg.quality = ctrl->value;
 			LOGV(1, "jpeg quality: %d\n", enc->mjpeg.quality);
 
-			if (ctx->mpp_streaming &&
+			if (rkmpp_is_streaming(ctx) &&
 			    rkmpp_enc_apply_mjpeg_cfg(enc) < 0) {
 				LOGE("failed to apply compression quality\n");
 				RETURN_ERR(errno, -1);

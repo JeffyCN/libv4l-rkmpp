@@ -765,7 +765,7 @@ int rkmpp_dqbuf(struct rkmpp_context *ctx, struct v4l2_buffer *buffer)
 
 void rkmpp_streamon(struct rkmpp_context *ctx)
 {
-	if (ctx->mpp_streaming)
+	if (rkmpp_is_streaming(ctx))
 		return;
 
 	ENTER();
@@ -776,7 +776,7 @@ void rkmpp_streamon(struct rkmpp_context *ctx)
 	pthread_mutex_lock(&ctx->worker_mutex);
 	ctx->pausing = false;
 	ctx->mpp_produced = false;
-	ctx->mpp_streaming = true;
+	rkmpp_set_streaming(ctx, true);
 	pthread_cond_signal(&ctx->worker_cond);
 	pthread_mutex_unlock(&ctx->worker_mutex);
 
@@ -785,7 +785,7 @@ void rkmpp_streamon(struct rkmpp_context *ctx)
 
 void rkmpp_streamoff(struct rkmpp_context *ctx)
 {
-	if (!ctx->mpp_streaming)
+	if (!rkmpp_is_streaming(ctx))
 		return;
 
 	ENTER();
@@ -794,7 +794,7 @@ void rkmpp_streamoff(struct rkmpp_context *ctx)
 	 * hold worker_mutex inside an unbounded internal MPP wait that
 	 * reset alone does not always wake, so the flag must be cleared
 	 * and MPP reset before taking the lock. */
-	__atomic_store_n(&ctx->mpp_streaming, false, __ATOMIC_RELEASE);
+	rkmpp_set_streaming(ctx, false);
 	ctx->mpi->reset(ctx->mpp);
 
 	/* Bounded wait: if the worker stays stuck inside MPP, take the

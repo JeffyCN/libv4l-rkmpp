@@ -303,6 +303,20 @@ struct rkmpp_context {
 	void *data;
 };
 
+/* The streaming flag is cleared with a release store outside any
+ * lock to wake the workers, so it must only be touched through
+ * these two helpers. */
+static inline bool rkmpp_is_streaming(const struct rkmpp_context *ctx)
+{
+	return __atomic_load_n(&ctx->mpp_streaming, __ATOMIC_ACQUIRE);
+}
+
+static inline void rkmpp_set_streaming(struct rkmpp_context *ctx,
+				       bool streaming)
+{
+	__atomic_store_n(&ctx->mpp_streaming, streaming, __ATOMIC_RELEASE);
+}
+
 static inline
 struct rkmpp_buf_queue *rkmpp_get_queue(struct rkmpp_context *ctx,
 					enum v4l2_buf_type type)
